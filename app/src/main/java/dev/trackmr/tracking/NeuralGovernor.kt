@@ -1,7 +1,6 @@
 package dev.trackmr.tracking
 
 import android.content.Context
-import dev.trackmr.core.PerformanceGovernor
 import org.tensorflow.lite.Interpreter
 import java.io.File
 
@@ -14,6 +13,8 @@ class NeuralGovernor(context: Context) : AutoCloseable {
             try {
                 require(engine.getInputTensor(0).shape().contentEquals(intArrayOf(1,5)))
                 require(engine.getOutputTensor(0).shape().contentEquals(intArrayOf(1,2)))
+                require(engine.getInputTensor(0).dataType()==org.tensorflow.lite.DataType.FLOAT32)
+                require(engine.getOutputTensor(0).dataType()==org.tensorflow.lite.DataType.FLOAT32)
                 engine
             } catch(e: Exception) { engine.close();throw e }
         }

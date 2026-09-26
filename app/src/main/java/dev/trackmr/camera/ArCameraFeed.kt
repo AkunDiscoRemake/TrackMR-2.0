@@ -15,6 +15,8 @@ class ArCameraFeed(private val activity: Activity,private val consumer: CameraCo
     private val output=CameraFrame()
     private var lastFrame: Frame?=null
     private var origin: Pose?=null
+    private val ndcCorners=floatArrayOf(-1f,-1f,1f,-1f,-1f,1f)
+    private val imageCorners=floatArrayOf(0f,0f,1f,0f,0f,1f)
     private val matrix=FloatArray(16)
     private var lastSourceTimestamp=0L
     private var lastDepthImageTimestamp=0L
@@ -39,6 +41,7 @@ class ArCameraFeed(private val activity: Activity,private val consumer: CameraCo
                     val manager=activity.getSystemService(android.hardware.camera2.CameraManager::class.java)
                     manager.getCameraCharacteristics(s.cameraConfig.cameraId).get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE)==android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME
                 }.getOrDefault(false)
+                output.realtimeClock=false // timestampNs below is local acquisition, not sensor capture latency.
                 output.depthAvailable=s.isDepthModeSupported(Config.DepthMode.AUTOMATIC)
                 s.setCameraTextureName(texture)
                 @Suppress("DEPRECATION")
@@ -57,16 +60,25 @@ class ArCameraFeed(private val activity: Activity,private val consumer: CameraCo
             output.active=output.timestampNs>0&&SystemClock.elapsedRealtimeNanos()-output.timestampNs in 0L..350_000_000L
             output.width=width;output.height=height
             f.camera.getProjectionMatrix(output.projection,0,.05f,100f)
-            coordinates.rewind();coordinates.put(floatArrayOf(-1f,-1f,1f,-1f,-1f,1f)).rewind();transformed.rewind()
+            coordinates.rewind();coordinates.put(ndcCorners).rewind();transformed.rewind()
             f.transformCoordinates2d(Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES,coordinates,Coordinates2d.TEXTURE_NORMALIZED,transformed)
             val a=transformed.get(0);val b=transformed.get(1)
             Matrix.setIdentityM(output.textureTransform,0)
             output.textureTransform[0]=transformed.get(2)-a;output.textureTransform[1]=transformed.get(3)-b
             output.textureTransform[4]=transformed.get(4)-a;output.textureTransform[5]=transformed.get(5)-b
             output.textureTransform[12]=a;output.textureTransform[13]=b
+            if(useDepth&&output.depthAvailable){
+                coordinates.rewind();coordinates.put(ndcCorners).rewind();transformed.rewind()
+                f.transformCoordinates2d(Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES,coordinates,Coordinates2d.IMAGE_NORMALIZED,transformed)
+                val x=transformed.get(0);val y=transformed.get(1)
+                Matrix.setIdentityM(output.depthTransform,0)
+                output.depthTransform[0]=transformed.get(2)-x;output.depthTransform[1]=transformed.get(3)-y
+                output.depthTransform[4]=transformed.get(4)-x;output.depthTransform[5]=transformed.get(5)-y
+                output.depthTransform[12]=x;output.depthTransform[13]=y
+            }
             if(consumer?.reserve(SystemClock.elapsedRealtimeNanos())==true){
                 try{
-                    coordinates.rewind();coordinates.put(floatArrayOf(0f,0f,1f,0f,0f,1f)).rewind();transformed.rewind()
+                    coordinates.rewind();coordinates.put(imageCorners).rewind();transformed.rewind()
                     f.transformCoordinates2d(Coordinates2d.IMAGE_NORMALIZED,coordinates,Coordinates2d.VIEW_NORMALIZED,transformed)
                     val map=FloatArray(6);transformed.rewind();transformed.get(map)
                     consumer.submit(f.acquireCameraImage(),map,cameraClockKnown)

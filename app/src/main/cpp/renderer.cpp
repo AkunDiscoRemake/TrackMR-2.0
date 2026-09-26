@@ -29,7 +29,7 @@ uniform mat4 invProjection,world,captureTransform;
 uniform sampler2D panorama,panel;
 uniform samplerExternalOES capture;
 uniform samplerExternalOES camera;
-uniform mat4 cameraProjection,cameraUv;
+uniform mat4 cameraProjection,cameraUv,depthUv;
 uniform int backgroundMode;
 uniform highp usampler2D realDepth;uniform int depthActive;
 uniform int scene,curved,capturing,highlight,target;
@@ -53,7 +53,7 @@ void main(){
  }
 
  float measuredDepth=1000.;
- if(backgroundMode==1&&depthActive==1){vec4 dc=cameraProjection*vec4(normalize(p.xyz/p.w),0);vec2 duv=dc.xy/dc.w*.5+.5;vec2 dt=(cameraUv*vec4(duv,0,1)).xy;float value=float(texture(realDepth,dt).r)*.001;if(value>.05)measuredDepth=value;}
+ if(backgroundMode==1&&depthActive==1){vec4 dc=cameraProjection*vec4(normalize(p.xyz/p.w),0);vec2 duv=dc.xy/dc.w*.5+.5;vec2 dt=(depthUv*vec4(duv,0,1)).xy;if(all(greaterThanEqual(dt,vec2(0)))&&all(lessThanEqual(dt,vec2(1)))){float value=float(texture(realDepth,dt).r)*.001;if(value>.05)measuredDepth=value;}}
  float nearest=1000.;
  if(scene>0){
    for(int i=0;i<6;i++){
@@ -104,7 +104,7 @@ struct Renderer {
  int width=0,height=0,rw=0,rh=0,scene=0,score=0,hover=-1;
  SpatialLayer ui;GpuTimer gpu;float ambient=1;
  GLuint cameraTexture=0,depthTexture=0;bool depthActive=false;
- Mat4 cameraProjection=Mat4::identity(),cameraUv=Mat4::identity();
+ Mat4 cameraProjection=Mat4::identity(),cameraUv=Mat4::identity(),depthUv=Mat4::identity();
  int backgroundMode=0;
  float cameraFrame[32]{};
  std::array<float,24> anchors{};int anchorCount=0;
@@ -218,6 +218,7 @@ struct Renderer {
    glUniform1i(glGetUniformLocation(prog,"backgroundMode"),backgroundMode);
    glUniformMatrix4fv(glGetUniformLocation(prog,"cameraProjection"),1,GL_FALSE,cameraProjection.m);
    glUniformMatrix4fv(glGetUniformLocation(prog,"cameraUv"),1,GL_FALSE,cameraUv.m);
+   glUniformMatrix4fv(glGetUniformLocation(prog,"depthUv"),1,GL_FALSE,depthUv.m);
    glUniform1i(sceneLoc,scene);glUniform1i(curveLoc,curved);glUniform1i(captureLoc,capturing);
    glUniform1f(aspectLoc,aspect);glUniform1i(highlightLoc,hover);glUniform1i(targetLoc,score%6);
    glUniform3fv(glGetUniformLocation(prog,"anchors"),anchorCount,anchors.data());glUniform1i(glGetUniformLocation(prog,"anchorCount"),anchorCount);glUniform1f(glGetUniformLocation(prog,"ambient"),ambient);
@@ -289,4 +290,4 @@ JNI(anchors) void JNICALL Java_dev_trackmr_vr_NativeBridge_anchors(JNIEnv* e,job
 JNI(hitPoint) void JNICALL Java_dev_trackmr_vr_NativeBridge_hitPoint(JNIEnv* e,jobject,jlong p,jfloatArray result){if(e->GetArrayLength(result)<2)return;float uv[]={ptr(p)->ui.hitU,ptr(p)->ui.hitV};e->SetFloatArrayRegion(result,0,2,uv);}
 JNI(gpuTime) jfloat JNICALL Java_dev_trackmr_vr_NativeBridge_gpuTime(JNIEnv*,jobject,jlong p){return ptr(p)->gpu.milliseconds;}
 
-JNI(depth) void JNICALL Java_dev_trackmr_vr_NativeBridge_depth(JNIEnv*,jobject,jlong p,jint texture,jboolean active){ptr(p)->depthTexture=texture;ptr(p)->depthActive=active;}
+JNI(depth) void JNICALL Java_dev_trackmr_vr_NativeBridge_depth(JNIEnv* e,jobject,jlong p,jint texture,jboolean active,jfloatArray uv){auto r=ptr(p);r->depthTexture=texture;r->depthActive=active;if(uv&&e->GetArrayLength(uv)==16)e->GetFloatArrayRegion(uv,0,16,r->depthUv.m);}

@@ -28,14 +28,14 @@ class CaptureService : Service() {
             .setContentTitle("TrackMR • compartilhamento ativo").setContentText("Sua tela está na janela VR. Toque em Parar para encerrar.")
             .addAction(Notification.Action.Builder(null,"Parar",stop).build()).setOngoing(true).build()
         startForeground(20,notification,ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-        if (intent?.action=="stop") { stopSelf(); return START_NOT_STICKY }
+        if (intent?.action=="stop") { stopCapture();stopSelf(); return START_NOT_STICKY }
         if (projection!=null) return START_NOT_STICKY
         @Suppress("DEPRECATION") val data=intent?.getParcelableExtra<Intent>("consent")
         if (data==null) { stopSelf(); return START_NOT_STICKY }
         try {
             projection=getSystemService(MediaProjectionManager::class.java).getMediaProjection(Activity.RESULT_OK,data)
             projection!!.registerCallback(object : MediaProjection.Callback() {
-                override fun onStop() { stopSelf() }
+                override fun onStop() { stopCapture();stopSelf() }
                 override fun onCapturedContentResize(width: Int, height: Int) {
                     if(width<=0||height<=0)return
                     display?.resize(width,height,resources.displayMetrics.densityDpi)
@@ -55,10 +55,13 @@ class CaptureService : Service() {
             true
         } catch (_: Exception) { stopSelf(); false }
     }
-    override fun onDestroy() {
-        display?.release(); display=null; projection?.stop(); projection=null
+    fun stopCapture() {
+        display?.release();display=null
+        val old=projection;projection=null;old?.stop()
         // Surface is owned by the GL activity, not by the service.
-        surface=null; onStopped?.invoke(); onStopped=null; onResize=null
-        stopForeground(STOP_FOREGROUND_REMOVE); super.onDestroy()
+        surface=null;val callback=onStopped;onStopped=null;onResize=null;callback?.invoke()
+    }
+    override fun onDestroy() {
+        stopCapture();stopForeground(STOP_FOREGROUND_REMOVE); super.onDestroy()
     }
 }

@@ -11,5 +11,9 @@ class SpatialTest {
  @Test fun recovery(){ assertTrue(RecoveryPolicy(2).safeMode);assertFalse(RecoveryPolicy(2).restoreLayout);assertFalse(RecoveryPolicy(0).safeMode) }
  @Test fun maximizeIsReversible(){val w=SpatialWindow(1,WindowKind.HOME);val initial=w.width to w.height;repeat(100){w.toggleMaximize();w.toggleMaximize()};assertEquals(initial.first,w.width,0f);assertEquals(initial.second,w.height,0f)}
  @Test fun staleClockNotReportedAsLatency(){assertNull(ClockDomain().ageMs(1,5_000_000_000,true))}
+ @Test fun fiveWindowsAndKeyboardFitNativeAndAtlasBudgets(){
+     assertTrue(SpatialBudget.worstCaseTiles()<=SpatialBudget.ATLAS_TILES)
+     assertTrue(SpatialBudget.worstCaseItems()<=SpatialBudget.PACKET_ITEMS)
+ }
  @Test fun restoreIds(){ val m=WindowManager();m.restore(SpatialWindow(20,WindowKind.HOME));assertEquals(21,m.spawn(WindowKind.STORE).id) }
 }

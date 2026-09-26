@@ -66,6 +66,7 @@ class Camera2Feed(private val activity: Activity,private val consumer: CameraCon
             manager.openCamera(id,object: CameraDevice.StateCallback(){
                 override fun onOpened(camera: CameraDevice){
                     if(closing.get()){camera.close();return};device=camera
+                    try {
                     @Suppress("DEPRECATION")
                     camera.createCaptureSession(listOf(surface!!,reader!!.surface),object: CameraCaptureSession.StateCallback(){
                         override fun onConfigured(session: CameraCaptureSession){
@@ -83,6 +84,7 @@ class Camera2Feed(private val activity: Activity,private val consumer: CameraCon
                         }
                         override fun onConfigureFailed(session: CameraCaptureSession){status="Camera2: configuração recusada";cameraFailed=true}
                     },handler)
+                    }catch(e: Exception){status="Camera2 sessão: ${e.message}";cameraFailed=true;camera.close()}
                 }
                 override fun onDisconnected(camera: CameraDevice){camera.close();status="Camera2 desconectada";cameraFailed=true}
                 override fun onError(camera: CameraDevice,code: Int){camera.close();status="Camera2 erro $code";cameraFailed=true}

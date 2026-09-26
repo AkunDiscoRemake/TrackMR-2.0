@@ -15,7 +15,7 @@ class LocalAssistant(private val context: Context,private val update: (String)->
     private var engine: LlmInference?=null
     @Volatile var answer="Importe um modelo MediaPipe LLM. GGUF não é suportado.";private set
     private val messages=ArrayDeque<String>()
-    private fun perform(job: ()->String){if(closed.get()||!busy.compareAndSet(false,true))return
+    @Synchronized private fun perform(job: ()->String){if(closed.get()||!busy.compareAndSet(false,true))return
         worker.execute{val result=runCatching(job).getOrElse{"IA local: ${it.javaClass.simpleName}: ${it.message}"};answer=result;busy.set(false);if(!closed.get())update(result)}
     }
     fun importModel(uri: Uri)=perform{
@@ -34,5 +34,5 @@ class LocalAssistant(private val context: Context,private val update: (String)->
         val prompt="Responda em português. Não invente acesso a câmera, sensores ou controle de apps.\n"+messages.joinToString("\n").takeLast(1800)+"\nAssistente:"
         engine!!.generateResponse(prompt).also{messages.addLast("Assistente: ${it.take(1400)}")}
     }
-    override fun close(){if(!closed.compareAndSet(false,true))return;worker.execute{engine?.close();engine=null};worker.shutdown()}
+    @Synchronized override fun close(){if(!closed.compareAndSet(false,true))return;worker.execute{engine?.close();engine=null};worker.shutdown()}
 }

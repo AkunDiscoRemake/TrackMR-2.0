@@ -10,7 +10,7 @@ class SpatialShell(private val prefs: SharedPreferences,val atlas: SpatialAtlas)
     val settings=DockSettings(prefs.getFloat("dockX",0f),prefs.getFloat("dockY",-.4f),prefs.getFloat("dockDistance",1.6f),prefs.getFloat("dockScale",1f),prefs.getFloat("dockOpacity",.88f),prefs.getBoolean("reducedMotion",false))
     val windows=WindowManager()
     val pages=mutableMapOf<WindowKind,List<SpatialAction>>()
-    val packet=FloatArray(160*20)
+    val packet=FloatArray(SpatialBudget.PACKET_ITEMS*20)
     var count=0;private set
     var visible=true
     var movingDock=false
@@ -23,7 +23,7 @@ class SpatialShell(private val prefs: SharedPreferences,val atlas: SpatialAtlas)
     var surfaceKind: WindowKind?=null
     var keyboardText="";private set
     private var keyboardSubmit: ((String)->Unit)?=null
-    private val keys="QWERTYUIOPASDFGHJKLZXCVBNM0123456789.:-/"
+    private val keys=SpatialBudget.KEYBOARD_KEYS
     fun keyboard(initial: String="",submit: (String)->Unit){keyboardText=initial.take(1200);keyboardSubmit=submit}
     fun highContrast(enabled: Boolean){highContrast=enabled;prefs.edit().putBoolean("contrast",enabled).apply()}
     private val animation=Array(14){HoverAnimation()}
@@ -57,6 +57,7 @@ class SpatialShell(private val prefs: SharedPreferences,val atlas: SpatialAtlas)
             }
         }
         if(visible){
+            var fadingLabels=0
             DockItem.entries.forEachIndexed { i,item->
                 val a=animation[i].update(hovered==100+i,dt,settings.reducedMotion)
                 val angle=(i%7-3)*.16f*settings.scale
@@ -65,7 +66,7 @@ class SpatialShell(private val prefs: SharedPreferences,val atlas: SpatialAtlas)
                 val z=-cos(angle)*settings.distance
                 val color=when(i%4){0->floatArrayOf(.3f,.18f,.58f);1->floatArrayOf(.08f,.32f,.45f);2->floatArrayOf(.42f,.16f,.3f);else->floatArrayOf(.11f,.36f,.28f)}
                 add(100+i,atlas.tile("icon-$i",icon=i),x,y,z,.205f*settings.scale,.155f*settings.scale,-angle,settings.opacity,a,color[0],color[1],color[2],selected=if(selected==100+i&&now<selectedUntil)1f else 0f)
-                if(a>.01f)add(0,atlas.tile("label-$i",item.label),x,y-.105f*settings.scale,z+.012f,.32f*settings.scale*(.92f+a*.08f),.06f*settings.scale,-angle,a,0f,0f,0f,0f,1)
+                if(a>.01f&&(hovered==100+i||fadingLabels++<SpatialBudget.FADING_LABELS))add(0,atlas.tile("label-$i",item.label),x,y-.105f*settings.scale,z+.012f,.32f*settings.scale*(.92f+a*.08f),.06f*settings.scale,-angle,a,0f,0f,0f,0f,1)
             }
         }
         if(keyboardSubmit!=null){
@@ -77,7 +78,7 @@ class SpatialShell(private val prefs: SharedPreferences,val atlas: SpatialAtlas)
         add(0,atlas.tile("detail",detail),0f,.60f,-2f,1.5f,.14f,0f,.9f,0f,.07f,.09f,.16f)
     }
     private fun add(id: Int,tile: Int,x: Float,y: Float,z: Float,w: Float,h: Float,yaw: Float,opacity: Float,hover: Float,r: Float,g: Float,b: Float,kind: Int=0,selected: Float=0f){
-        if(count>=160)return
+        if(count>=SpatialBudget.PACKET_ITEMS)return
         val o=count++*20
         packet[o]=x;packet[o+1]=y;packet[o+2]=z;packet[o+3]=w
         packet[o+4]=h;packet[o+5]=yaw;packet[o+6]=opacity;packet[o+7]=hover
@@ -117,7 +118,7 @@ class SpatialShell(private val prefs: SharedPreferences,val atlas: SpatialAtlas)
         prefs.edit().putString("spatialLayout",encoded).apply()
     }
     fun restore(){
-        prefs.getString("spatialLayout","")!!.split(';').filter{it.isNotBlank()}.take(5).forEach{line->runCatching{
+        prefs.getString("spatialLayout","")!!.split(';').filter{it.isNotBlank()}.take(SpatialBudget.WINDOWS).forEach{line->runCatching{
             val p=line.split(',');val coords=(2..7).map{p[it].toFloat().also{v->require(v.isFinite())}}
             windows.restore(SpatialWindow(p[0].toInt(),WindowKind.valueOf(p[1]),Vec3(coords[0].coerceIn(-3f,3f),coords[1].coerceIn(-2f,2f),coords[2].coerceIn(-4f,-.5f)),coords[3].coerceIn(.45f,2.8f),coords[4].coerceIn(.3f,1.8f),coords[5],pinned=p[8].toBoolean(),minimized=p[9].toBoolean()))
         }}

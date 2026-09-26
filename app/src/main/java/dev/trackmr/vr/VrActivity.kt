@@ -107,8 +107,8 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
                     val bytes=contentResolver.openInputStream(uri)!!.use{source->val sink=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);while(sink.size()<=1048576){val n=source.read(buffer);if(n<0)break;sink.write(buffer,0,n)};sink.toByteArray()}
                     require(bytes.size in 100..1048576){"Modelo deve ter até 1 MiB"}
                     val file=java.io.File(filesDir,"performance.import").apply{writeBytes(bytes)}
-                    org.tensorflow.lite.Interpreter(file).use{require(it.getInputTensor(0).shape().contentEquals(intArrayOf(1,5)));require(it.getOutputTensor(0).shape().contentEquals(intArrayOf(1,2)));require(it.getInputTensor(0).dataType()==org.tensorflow.lite.DataType.FLOAT32)}
-                    view.queueEvent{neural?.close();check(file.renameTo(java.io.File(filesDir,"performance.tflite")));neural=NeuralGovernor(this);notify("Modelo neural importado; habilite em Ajustes avançados")}
+                    org.tensorflow.lite.Interpreter(file).use{require(it.getInputTensor(0).shape().contentEquals(intArrayOf(1,5)));require(it.getOutputTensor(0).shape().contentEquals(intArrayOf(1,2)));require(it.getInputTensor(0).dataType()==org.tensorflow.lite.DataType.FLOAT32);require(it.getOutputTensor(0).dataType()==org.tensorflow.lite.DataType.FLOAT32)}
+                    view.queueEvent{runCatching{neural?.close();check(file.renameTo(java.io.File(filesDir,"performance.tflite")));neural=NeuralGovernor(this);notify("Modelo neural importado; habilite em Ajustes avançados")}.onFailure{file.delete();notify("Modelo neural: ${it.message}",true)}}
                 }
                 result.exceptionOrNull()?.let{notify("Modelo inválido: ${it.message}",true)}
             }
@@ -125,12 +125,13 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
     }
     private val captureConsent=registerForActivityResult(ActivityResultContracts.StartActivityForResult()){result->
         if(result.resultCode==Activity.RESULT_OK&&result.data!=null){
-            try{browser?.close();browser=null;val intent=Intent(this,CaptureService::class.java).putExtra("consent",result.data);startForegroundService(intent);bound=bindService(intent,captureConnection,Context.BIND_AUTO_CREATE)}
+            try{stopContent();val intent=Intent(this,CaptureService::class.java).putExtra("consent",result.data);startForegroundService(intent);bound=bindService(intent,captureConnection,Context.BIND_AUTO_CREATE)}
             catch(e: Exception){notify("Captura: ${e.message}",true)}
         }else notify("Captura cancelada pelo usuário")
     }
     private val captureConnection=object: ServiceConnection {
         override fun onServiceConnected(name: ComponentName?,binder: IBinder?){
+            if(!bound||!resumed)return
             captureService=(binder as CaptureService.LocalBinder).service
             captureService?.onResize={w,h->view.queueEvent{captureTexture?.setDefaultBufferSize(w,h);if(::shell.isInitialized)shell.windows.windows.find{it.kind==WindowKind.CAPTURE}?.let{it.width=(it.height*w/h).coerceIn(.45f,2.8f)}}}
             captureService?.onStopped={capturing=false;captureService=null;view.queueEvent{if(::shell.isInitialized)shell.surfaceKind=null}}
@@ -172,9 +173,8 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
     }
     override fun onPause(){
         resumed=false
-        browser?.close();browser=null
-        if(captureService==null)capturing=false
-        view.queueEvent{stopCamera();if(handle!=0L)NativeBridge.pause(handle);if(::shell.isInitialized)shell.save()}
+        stopContent()
+        view.queueEvent{stopCamera();if(handle!=0L)NativeBridge.pause(handle);if(::shell.isInitialized){shell.surfaceKind=null;shell.save()}}
         view.onPause();super.onPause()
         if(!failed)prefs.edit().putInt("unclean",0).apply()
     }
@@ -210,8 +210,9 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
             neural?.close();neural=NeuralGovernor(this)
             atlas?.close();atlas=SpatialAtlas(textures[1]);shell=SpatialShell(prefs,atlas!!).apply{onDock={openDock(it)};if(!safeMode)restore()}
             val blank=android.graphics.Bitmap.createBitmap(1,1,android.graphics.Bitmap.Config.ARGB_8888);blank.eraseColor(0xff171d31.toInt());GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,textures[0]);GLUtils.texImage2D(GLES30.GL_TEXTURE_2D,0,blank,0);blank.recycle()
-            if(captureTexture!=null)runOnUiThread{stopService(Intent(this,CaptureService::class.java))}
-            captureSurface?.release();captureTexture?.release();capturing=false
+            val oldSurface=captureSurface;val oldTexture=captureTexture
+            if(oldTexture!=null)runOnUiThread{stopContent();oldSurface?.release();oldTexture.release()}
+            capturing=false
             captureTexture=SurfaceTexture(textures[2]).apply{setDefaultBufferSize(1280,720);setOnFrameAvailableListener{captured.set(true)}}
             captureSurface=Surface(captureTexture);runOnUiThread{attachCapture()}
             refreshPages();startCamera()
@@ -244,7 +245,7 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
             // Do not draw a camera-normalized skeleton as fake metric 3D hands.
             NativeBridge.hands(handle,null)
             if(capturing&&shell.surfaceKind!=null&&shell.windows.windows.none{it.kind==shell.surfaceKind&&!it.minimized}){
-                capturing=false;shell.surfaceKind=null;runOnUiThread{browser?.close();browser=null;stopService(Intent(this,CaptureService::class.java))}
+                capturing=false;shell.surfaceKind=null;runOnUiThread{stopContent()}
             }
             if(capturing&&captured.getAndSet(false)){captureTexture?.updateTexImage();captureTexture?.getTransformMatrix(transform)}
             val mode=runCatching{QualityMode.valueOf(prefs.getString("quality","BALANCED")!!)}.getOrDefault(QualityMode.BALANCED)
@@ -256,7 +257,7 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
                 GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,textures[4]);GLES30.glPixelStorei(GLES30.GL_UNPACK_ALIGNMENT,1)
                 GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D,0,GLES30.GL_R16UI,frame.depthWidth,frame.depthHeight,0,GLES30.GL_RED_INTEGER,GLES30.GL_UNSIGNED_SHORT,frame.depthData!!.apply{rewind()});lastDepthNs=frame.depthTimestampNs
             }
-            NativeBridge.depth(handle,textures[4],frame?.depthData!=null&&start-frame.depthTimestampNs in 0L..150_000_000L)
+            NativeBridge.depth(handle,textures[4],frame?.depthData!=null&&start-frame.depthTimestampNs in 0L..150_000_000L,frame?.depthTransform)
             NativeBridge.anchors(handle,feed?.anchorPositions() ?: FloatArray(0),frame?.light ?: 1f)
             if(start-lastStats>1_000_000_000){
                 lastStats=start
@@ -318,10 +319,10 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         shell.pages[WindowKind.SETTINGS]=listOf(action("Mover dock\nPinça + movimento"){shell.movingDock=!shell.movingDock;shell.movingWindow=false},action("Escala do dock +"){shell.settings.scale+=.1f;shell.save()},action("Distância do dock +"){shell.settings.distance+=.15f;if(shell.settings.distance>3)shell.settings.distance=.9f;shell.save()},action("Transparência"){shell.settings.opacity=if(shell.settings.opacity>.7f).5f else .95f;shell.save()},action("Movimento reduzido"){shell.settings.reducedMotion=!shell.settings.reducedMotion;shell.save()},action("Perfil de qualidade"){val q=QualityMode.valueOf(prefs.getString("quality","BALANCED")!!);prefs.edit().putString("quality",QualityMode.entries[(q.ordinal+1)%3].name).apply()},action("QR das lentes"){main{NativeBridge.scan()}},action("Mais ajustes"){advancedSettings=!advancedSettings;refreshPages()})
         if(advancedSettings)shell.pages[WindowKind.SETTINGS]=listOf(action("Sons de seleção"){prefs.edit().putBoolean("sound",!prefs.getBoolean("sound",false)).apply()},action("Alto contraste"){shell.highContrast(!prefs.getBoolean("contrast",false))},action("UI grande"){shell.settings.scale=if(shell.settings.scale>1.2f)1f else 1.4f;shell.save()},action("Importar policy neural"){main{importTarget="neural";importDocument.launch(arrayOf("*/*"))}},action("Consultor neural ON/OFF"){prefs.edit().putBoolean("neural",!prefs.getBoolean("neural",false)).apply()},action("Snap janela à esquerda"){shell.windows.focus?.let{shell.windows.snap(it,-1)};shell.save()},action("Reiniciar disposição"){shell.settings.x=0f;shell.settings.y=-.4f;shell.settings.scale=1f;shell.settings.distance=1.6f;shell.windows.recenter();shell.save()},action("Ajustes principais"){advancedSettings=false;refreshPages()})
         shell.pages[WindowKind.ENVIRONMENTS]=listOf(action("Horizonte dourado"){loadEnvironment("loft");experience.request(Experience.VR);if(!prefs.getBoolean("hands",true))stopCamera()},action("Noite violeta"){loadEnvironment("neon");experience.request(Experience.VR);if(!prefs.getBoolean("hands",true))stopCamera()},action("Voltar a MR"){openDock(DockItem.MR)},info("Panoramas reais do projeto\nSem profundidade"))
-        shell.pages[WindowKind.BROWSER]=listOf(action("Abrir página HTTPS"){shell.keyboard(prefs.getString("browserUrl","https://example.org")!!){url->main{startBrowser(url)}}},action("Voltar na página"){main{browser?.back()}},action("Digitar no campo web"){shell.keyboard{value->main{browser?.text(value)}}},action("Fechar página"){main{browser?.close();browser=null;capturing=false};shell.surfaceKind=null},action("Wolvic / WebXR externo"){main{Catalog.openLink(this,"https://wolvic.com/")}},info("WebView privado espacial\nSem promessa de WebXR"))
+        shell.pages[WindowKind.BROWSER]=listOf(action("Abrir página HTTPS"){shell.keyboard(prefs.getString("browserUrl","https://example.org")!!){url->main{startBrowser(url)}}},action("Voltar na página"){main{browser?.back()}},action("Digitar no campo web"){shell.keyboard{value->main{browser?.text(value)}}},action("Fechar página"){main{stopContent()};shell.surfaceKind=null},action("Wolvic / WebXR externo"){main{Catalog.openLink(this,"https://wolvic.com/")}},info("WebView privado espacial\nSem promessa de WebXR"))
         val answer=assistant.answer.chunked(80)
         shell.pages[WindowKind.ASSISTANT]=listOf(action(if(assistant.busy.get())"Processando localmente" else "Nova pergunta",!assistant.busy.get()){shell.keyboard{question->assistant.ask(question)}},action("Importar modelo",!assistant.busy.get()){main{importTarget="assistant";importDocument.launch(arrayOf("*/*"))}},action("Ler próxima parte"){assistantPage=if(assistantPage+1>=answer.size)0 else assistantPage+1;refreshPages()},info("${assistantPage+1}/${answer.size.coerceAtLeast(1)} • sem nuvem"))+answer.drop(assistantPage).take(4).map{info(it.chunked(22).joinToString("\n"))}
-        shell.pages[WindowKind.CAPTURE]=listOf(action("Compartilhar um app"){main{browser?.close();browser=null;captureConsent.launch(getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent())}},action("Parar captura"){main{stopService(Intent(this,CaptureService::class.java))};shell.surfaceKind=null},action("Conectar Shizuku"){main{shizuku.requestOrBind()}},info("${shizuku.status()}"),info("Sem injeção de toque\nDRM permanece protegido"))
+        shell.pages[WindowKind.CAPTURE]=listOf(action("Compartilhar um app"){main{stopContent();captureConsent.launch(getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent())}},action("Parar captura"){main{stopContent()};shell.surfaceKind=null},action("Conectar Shizuku"){main{shizuku.requestOrBind()}},info("${shizuku.status()}"),info("Sem injeção de toque\nDRM permanece protegido"))
         shell.pages[WindowKind.TRACKING]=listOf(info(hands?.status ?: "Mãos desligadas"),action(if(prefs.getBoolean("hands",true))"Desligar mãos" else "Ligar mãos"){prefs.edit().putBoolean("hands",!prefs.getBoolean("hands",true)).apply();safeMode=false;stopCamera();startCamera()},info("Planos: ${cameraFrame?.planes ?: 0}\nÂncoras: ${cameraFrame?.anchors ?: 0}"),action(if(prefs.getBoolean("depth",false))"Desligar oclusão depth" else "Oclusão depth opcional",cameraFrame?.depthAvailable==true){prefs.edit().putBoolean("depth",!prefs.getBoolean("depth",false)).apply();stopCamera();startCamera()},action("Reconectar câmera"){cameraAllowed=true;preferCamera2=false;stopCamera();startCamera()},info("Pinça: selecionar\nPalma aberta: dock"),info("2 pinças: escala/giro\nMOVER: arrastar janela"))
         val sample=hands?.latest?.get();val ram=ActivityManager.MemoryInfo().also{getSystemService(ActivityManager::class.java).getMemoryInfo(it)}
         shell.pages[WindowKind.DIAGNOSTICS]=listOf(info("p95 ${"%.1f".format(stats.percentile(.95f))} ms\n${"%.0f".format(1000/lastFrameMs.coerceAtLeast(1f))} callbacks/s"),info("CPU frame ${"%.1f".format(renderMs)} ms\nGPU ${if(gpuMs<0)"N/D" else "%.1f ms".format(gpuMs)}"),info("Inferência ${sample?.inferenceMs?.let{"%.1f".format(it)} ?: "—"} ms\nFiltro ${sample?.filterMs?.let{"%.1f".format(it)} ?: "—"} ms"),info("Térmico $thermal\nEscala ${"%.0f".format(quality.quality.renderScale*100)}%"),info("RAM livre ${ram.availMem/1048576} MiB\nE2E: requer medição externa"),info("${width}×$height\n${"%.0f".format(1000/targetMs)} Hz"),info("Frames de câmera pulados\n${hands?.dropped?.get() ?: 0}"),info("Pré ${sample?.preprocessMs?.let{"%.1f".format(it)} ?: "—"} ms\nChegada ${if(sample?.clockKnown==true)((sample.receivedNs-sample.timestampNs)/1e6).toInt().toString()+" ms" else "N/D"}"))
@@ -331,9 +332,9 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         },action("Sessão OpenXR real"){main{openXrSession.launch(Intent(this,dev.trackmr.openxr.SessionActivity::class.java))}},action("Configuração do app"){main{startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName")))}},action("Sair com segurança"){shell.save();main{finish()}},info("${Build.MANUFACTURER} ${Build.MODEL}\nAndroid ${Build.VERSION.RELEASE}"))
     }
     private fun startBrowser(url: String){
-        require(Uri.parse(url).scheme=="https"){"Use uma URL HTTPS"}
-        captureService?.onStopped=null;captureService?.onResize=null;stopService(Intent(this,CaptureService::class.java));captureService=null
-        browser?.close();browser=SpatialBrowser(this){notify(it,true)}
+        require(Uri.parse(url).scheme=="https"&&!Uri.parse(url).host.isNullOrBlank()){"Use uma URL HTTPS válida"}
+        stopContent()
+        browser=SpatialBrowser(this){notify(it,true)}
         captureTexture?.setDefaultBufferSize(1280,720)
         browser!!.open(captureSurface ?: error("Surface indisponível"),url)
         prefs.edit().putString("browserUrl",url).apply();capturing=true
@@ -343,13 +344,19 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         prefs.edit().putString("environment",id).apply();val epoch=generation
         io.execute{try{val image=assets.open("environments/$id.jpg").use{BitmapFactory.decodeStream(it)};view.queueEvent{try{if(epoch==generation){GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,textures[0]);GLUtils.texImage2D(GLES30.GL_TEXTURE_2D,0,image,0)}}finally{image.recycle()}}}catch(e: Exception){notify("Ambiente: ${e.message}",true)}}
     }
-    private fun attachCapture(){val surface=captureSurface ?: return;if(capturing)return;capturing=captureService?.attach(surface,1280,720)==true;if(capturing)view.queueEvent{shell.windows.spawn(WindowKind.CAPTURE);shell.surfaceKind=WindowKind.CAPTURE}}
+    /** Main-thread owner: a bound service must release projection even before onDestroy. */
+    private fun stopContent(){
+        capturing=false;browser?.close();browser=null
+        captureService?.onStopped=null;captureService?.onResize=null;captureService?.stopCapture();captureService=null
+        if(bound){unbindService(captureConnection);bound=false}
+        stopService(Intent(this,CaptureService::class.java))
+    }
+    private fun attachCapture(){if(!resumed||browser!=null)return;val surface=captureSurface ?: return;if(capturing)return;capturing=captureService?.attach(surface,1280,720)==true;if(capturing)view.queueEvent{shell.windows.spawn(WindowKind.CAPTURE);shell.surfaceKind=WindowKind.CAPTURE}}
     private fun notify(message: String,error: Boolean=false){notices.add(SystemClock.elapsedRealtimeNanos(),message,error);if(error)android.util.Log.e("TrackMR",message)}
     private fun fatal(e: Exception){failed=true;notify(e.message ?: e.javaClass.simpleName,true);runOnUiThread{android.app.AlertDialog.Builder(this).setTitle("Falha no renderer XR").setMessage("${e.javaClass.simpleName}: ${e.message}").setPositiveButton("Encerrar"){_,_->finish()}.setCancelable(false).show()}}
     override fun onKeyDown(code: Int,event: KeyEvent): Boolean {if(code==KeyEvent.KEYCODE_VOLUME_UP||code==KeyEvent.KEYCODE_BUTTON_A){if(event.repeatCount==0)view.queueEvent{select()};return true};return super.onKeyDown(code,event)}
     override fun onDestroy(){
-        power.removeThermalStatusListener(thermalListener);shizuku.close();assistant.close();audio.close();browser?.close()
-        captureService?.onResize=null;captureService?.onStopped=null;if(bound)unbindService(captureConnection);stopService(Intent(this,CaptureService::class.java))
+        power.removeThermalStatusListener(thermalListener);shizuku.close();assistant.close();audio.close();stopContent()
         view.queueEvent{stopCamera();neural?.close();atlas?.close();captureSurface?.release();captureTexture?.release();if(handle!=0L){NativeBridge.destroy(handle);handle=0}}
         io.shutdown();super.onDestroy()
     }

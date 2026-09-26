@@ -9,7 +9,7 @@ class GpuTimer {
  PFNGLGENQUERIESEXTPROC gen=nullptr;PFNGLDELETEQUERIESEXTPROC del=nullptr;
  PFNGLBEGINQUERYEXTPROC beginQuery=nullptr;PFNGLENDQUERYEXTPROC endQuery=nullptr;
  PFNGLGETQUERYOBJECTUIVEXTPROC available=nullptr;PFNGLGETQUERYOBJECTUI64VEXTPROC result=nullptr;
- std::array<GLuint,4> ids{};std::array<bool,4> pending{};int next=0;bool started=false;
+ std::array<GLuint,4> ids{};std::array<bool,4> pending{},valid{};int next=0;bool started=false;
 public:
  float milliseconds=-1;
  void initialize(){
@@ -21,9 +21,10 @@ public:
  }
  void begin(){
   if(!gen)return;GLint disjoint=0;glGetIntegerv(GL_GPU_DISJOINT_EXT,&disjoint);
-  for(int i=0;i<4;i++)if(pending[i]){GLuint ready=0;available(ids[i],GL_QUERY_RESULT_AVAILABLE_EXT,&ready);if(ready){GLuint64 nanos=0;result(ids[i],GL_QUERY_RESULT_EXT,&nanos);pending[i]=false;milliseconds=disjoint?-1:static_cast<float>(nanos/1e6);}}
+  if(disjoint)for(int i=0;i<4;i++)valid[i]=false;
+  for(int i=0;i<4;i++)if(pending[i]){GLuint ready=0;available(ids[i],GL_QUERY_RESULT_AVAILABLE_EXT,&ready);if(ready){GLuint64 nanos=0;result(ids[i],GL_QUERY_RESULT_EXT,&nanos);pending[i]=false;milliseconds=(!valid[i]||disjoint)?-1:static_cast<float>(nanos/1e6);}}
   if(disjoint)milliseconds=-1;
-  if(!pending[next]){beginQuery(GL_TIME_ELAPSED_EXT,ids[next]);started=true;}
+  if(!pending[next]){beginQuery(GL_TIME_ELAPSED_EXT,ids[next]);valid[next]=true;started=true;}
  }
  void end(){if(started){endQuery(GL_TIME_ELAPSED_EXT);pending[next]=true;next=(next+1)%4;started=false;}}
  void release(){if(gen&&del)del(ids.size(),ids.data());gen=nullptr;}

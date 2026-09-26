@@ -50,6 +50,17 @@ class HoverAnimation {
     }
 }
 
+object SpatialBudget {
+    const val WINDOWS=5
+    const val ATLAS_TILES=128
+    const val PACKET_ITEMS=160
+    const val FADING_LABELS=2
+    const val KEYBOARD_KEYS="QWERTYUIOPASDFGHJKLZXCVBNM0123456789.:-/"
+    // Empty + titles/actions + two shared chrome sets + dock + labels + keyboard + status.
+    fun worstCaseTiles()=1+WINDOWS*9+12+14+(FADING_LABELS+1)+KEYBOARD_KEYS.length+4+1+2
+    fun worstCaseItems()=WINDOWS*16+14+(FADING_LABELS+1)+KEYBOARD_KEYS.length+4+1+2
+}
+
 enum class WindowKind { HOME, LIBRARY, STORE, SETTINGS, BROWSER, CAPTURE, DIAGNOSTICS, NOTIFICATIONS, TRACKING, SYSTEM, ENVIRONMENTS, ASSISTANT, APP_DETAIL, STORE_DETAIL }
 data class SpatialWindow(val id: Int,val kind: WindowKind,var position: Vec3=Vec3(0f,.22f,-1.9f),
     var width: Float=1.35f,var height: Float=.78f,var yaw: Float=0f,var opacity: Float=.92f,
@@ -63,7 +74,7 @@ data class SpatialWindow(val id: Int,val kind: WindowKind,var position: Vec3=Vec
     fun resize(factor: Float) { if(!factor.isFinite())return;width=(width*factor).coerceIn(.45f,2.8f);height=(height*factor).coerceIn(.3f,1.8f) }
 }
 /** Session-relative layout persistence is NOT a persistent physical/spatial anchor. */
-class WindowManager(private val limit: Int=5) {
+class WindowManager(private val limit: Int=SpatialBudget.WINDOWS) {
     val windows=mutableListOf<SpatialWindow>()
     var focus: Int?=null;private set
     private var next=1

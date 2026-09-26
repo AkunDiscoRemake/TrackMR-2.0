@@ -16,7 +16,7 @@ object NativeBridge {
     external fun scene(handle: Long, scene: Int)
     external fun select(handle: Long): Int
     external fun hands(handle: Long, points: FloatArray?)
-    external fun depth(handle: Long, texture: Int, active: Boolean)
+    external fun depth(handle: Long, texture: Int, active: Boolean, uv: FloatArray?)
     external fun anchors(handle: Long, positions: FloatArray, ambient: Float)
     external fun hitPoint(handle: Long, result: FloatArray)
     external fun gpuTime(handle: Long): Float

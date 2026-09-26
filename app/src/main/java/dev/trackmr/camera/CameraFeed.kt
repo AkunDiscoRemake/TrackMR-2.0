@@ -11,6 +11,7 @@ interface CameraConsumer {
 }
 class CameraFrame {
     val textureTransform=FloatArray(16).apply{Matrix.setIdentityM(this,0)}
+    val depthTransform=FloatArray(16).apply{Matrix.setIdentityM(this,0)}
     val projection=FloatArray(16).apply{Matrix.perspectiveM(this,0,60f,4/3f,.05f,100f)}
     var pose: FloatArray?=null
     var timestampNs=0L

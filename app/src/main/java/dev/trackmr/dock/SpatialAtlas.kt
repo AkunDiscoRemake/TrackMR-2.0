@@ -4,6 +4,7 @@ import android.graphics.*
 import android.opengl.GLES30
 import android.opengl.GLUtils
 import dev.trackmr.xr.DockItem
+import dev.trackmr.xr.SpatialBudget
 
 /** Bounded LRU atlas. Only changed 256x128 tiles upload; never an Android screen in a headset. */
 class SpatialAtlas(val texture: Int) : AutoCloseable {
@@ -21,7 +22,7 @@ class SpatialAtlas(val texture: Int) : AutoCloseable {
     fun tile(key: String,text: String="",icon: Int=-1): Int {
         var tile=cache[key]
         if(tile==null){
-            val slot=if(cache.size<128)cache.size else {
+            val slot=if(cache.size<SpatialBudget.ATLAS_TILES)cache.size else {
                 val old=cache.entries.filter{it.value.stamp!=stamp}.minByOrNull{it.value.stamp} ?: error("Atlas visible budget exceeded")
                 cache.remove(old.key);old.value.index
             }
