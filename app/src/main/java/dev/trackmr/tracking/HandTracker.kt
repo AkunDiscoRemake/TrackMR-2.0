@@ -129,9 +129,9 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
         val gain=if(mean<65)(65/mean.coerceAtLeast(35f)).coerceAtMost(1.4f) else 1f
         for (y in 0 until height) {
             for (x in 0 until width) {
-                val u=(x+.5f)/width;val v=(y+.5f)/height
-                val sx=(ImageOrientation.sourceX(u,v,rotation)*image.width).toInt().coerceIn(0,image.width-1)
-                val sy=(ImageOrientation.sourceY(u,v,rotation)*image.height).toInt().coerceIn(0,image.height-1)
+                val nx=(x+.5f)/width;val ny=(y+.5f)/height
+                val sx=(ImageOrientation.sourceX(nx,ny,rotation)*image.width).toInt().coerceIn(0,image.width-1)
+                val sy=(ImageOrientation.sourceY(nx,ny,rotation)*image.height).toInt().coerceIn(0,image.height-1)
                 val yy=(((yPlane.buffer.get(yBase+sy*yPlane.rowStride+sx*yPlane.pixelStride).toInt() and 255)-16)*gain).toInt()
                 val u=(uPlane.buffer.get(uBase+(sy/2)*uPlane.rowStride+(sx/2)*uPlane.pixelStride).toInt() and 255)-128
                 val v=(vPlane.buffer.get(vBase+(sy/2)*vPlane.rowStride+(sx/2)*vPlane.pixelStride).toInt() and 255)-128

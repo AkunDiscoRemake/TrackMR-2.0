@@ -59,7 +59,7 @@ class Camera2Feed(private val activity: Activity,private val consumer: CameraCon
             this.texture=SurfaceTexture(texture).apply{setDefaultBufferSize(preview.width,preview.height);setOnFrameAvailableListener({fresh.set(true)},handler)}
             surface=Surface(this.texture)
             val map=when(rotated){90->floatArrayOf(1f,0f,1f,1f,0f,0f);180->floatArrayOf(1f,1f,0f,1f,1f,0f);270->floatArrayOf(0f,1f,0f,0f,1f,1f);else->floatArrayOf(0f,0f,1f,0f,0f,1f)}
-            reader=ImageReader.newInstance(size.width,size.height,ImageFormat.YUV_420_888,2).apply{
+            reader=ImageReader.newInstance(size.width,size.height,ImageFormat.YUV_420_888,3).apply{
                 setOnImageAvailableListener({ source->
                     val image=runCatching{source.acquireLatestImage()}.getOrNull() ?: return@setOnImageAvailableListener
                     if(!closing.get()&&consumer?.reserve(SystemClock.elapsedRealtimeNanos())==true)consumer.submit(image,map,clockKnown) else image.close()
