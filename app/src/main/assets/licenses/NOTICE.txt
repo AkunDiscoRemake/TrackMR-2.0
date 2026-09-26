@@ -1,0 +1,13 @@
+TrackMR 2.0
+Código novo: colaboradores do projeto TrackMR 2.0, 2026.
+Licenciado sob Apache License 2.0, exceto recursos e componentes explicitamente indicados.
+
+Usa Google Cardboard SDK (Copyright Google LLC), MediaPipe, AndroidX,
+TensorFlow Lite, OpenXR Loader, Shizuku API, Protocol Buffers e outros
+componentes descritos em THIRD_PARTY.md, sob licenças de seus titulares.
+A estrutura de integração da API Cardboard segue a documentação e os exemplos
+Hello Cardboard upstream. O código do SDK é compilado sem remover seus avisos.
+
+As imagens da raiz do repositório e seus derivados não estão cobertos pela
+licença de código; autor/licença precisam ser confirmados pelo proprietário.
+Este software não é afiliado à Meta, Google, Khronos, Igalia ou Collabora.

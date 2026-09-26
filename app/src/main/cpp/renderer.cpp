@@ -54,7 +54,7 @@ void main(){
        nearest=t;vec3 n=normalize(o+d*t-balls[i].xyz);
        vec3 base=i==target?vec3(.4,1.,.82):vec3(.56,.37,1.);
        float light=.28+.72*max(0.,dot(n,normalize(vec3(-1,2,1))));
-       float ring=smoothstep(.05,.025,abs(n.y));
+       float ring=1.-smoothstep(.025,.05,abs(n.y));
        c=base*light+ring*.25+pow(1.-max(0.,dot(n,-d)),3.)*.3;
        if(i==highlight)c+=vec3(.16);
      }}
@@ -104,6 +104,10 @@ struct Renderer {
  ~Renderer(){
    CardboardHeadTracker_destroy(tracker);CardboardLensDistortion_destroy(lens);
    CardboardDistortionRenderer_destroy(distortion);
+   if(prog)glDeleteProgram(prog);if(lineProg)glDeleteProgram(lineProg);
+   if(fb)glDeleteFramebuffers(1,&fb);if(texture)glDeleteTextures(1,&texture);
+   if(vao)glDeleteVertexArrays(1,&vao);if(lineVao)glDeleteVertexArrays(1,&lineVao);
+   if(lineBuffer)glDeleteBuffers(1,&lineBuffer);
  }
  // Called on every new EGL context. Old GL names must not be deleted in the new context.
  void surface(){
@@ -119,8 +123,7 @@ struct Renderer {
    highlightLoc=glGetUniformLocation(prog,"highlight");targetLoc=glGetUniformLocation(prog,"target");
    glUseProgram(prog);glUniform1i(glGetUniformLocation(prog,"panorama"),0);
    glUniform1i(glGetUniformLocation(prog,"panel"),1);glUniform1i(glGetUniformLocation(prog,"capture"),2);
-   // The old distortion renderer held objects belonging to a lost context. Drop its pointer;
-   // VrActivity normally recreates the entire native renderer after context loss.
+   // VrActivity creates a fresh renderer for each EGL context.
    dirty=true;
  }
  bool configure(){

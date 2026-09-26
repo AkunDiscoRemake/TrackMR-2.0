@@ -31,7 +31,7 @@ Sem QR salvo, usa parâmetros oficiais Cardboard V1; isso é fallback, não cali
 ## Coordenadas e limites
 
 - Objetos: metros, mão direita, +X direita, +Y acima, -Z frente.
-- ARCore usa `displayOrientedPose`, relativa à primeira pose após inicialização/recenter. Não existe fusão de orientação Cardboard/ARCore: quando ARCore está tracking, usa-se sua pose completa; na perda, há fallback. Transição/relocalização pode produzir salto e precisa ser melhorada.
+- ARCore usa `displayOrientedPose`, relativa à posição e ao yaw da primeira pose após inicialização/recenter (preserva gravidade/pitch/roll). Não existe fusão de orientação Cardboard/ARCore: quando ARCore está tracking, usa-se sua pose completa; na perda, há fallback. Transição/relocalização pode produzir salto e precisa ser melhorada.
 - Panorama: amostra direção somente, ignorando a posição. Uma fotografia 360° não ganha profundidade com ARCore.
 - Mãos: coordenadas normalizadas da imagem convertidas para a viewport, com profundidade relativa do MediaPipe **não usada como metros**. Linhas de 1 pixel por olho são visualização/diagnóstico 2D; calibração intrínseca, oclusão, posição métrica e disparidade precisam de outra etapa.
 - Painel: interseção analítica com plano z=-2 ou cilindro de raio 2 m; CPU e shader usam o mesmo mapeamento UV. Resize mantém altura e adapta largura, limitada para conforto. Aspectos extremos podem ser comprimidos nesta alpha.

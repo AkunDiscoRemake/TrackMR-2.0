@@ -9,9 +9,13 @@ import java.io.File
 class NeuralGovernor(context: Context) : AutoCloseable {
     private val model: Interpreter? = runCatching {
         val f=File(context.filesDir,"performance.tflite")
-        if (!f.exists()) null else Interpreter(f,Interpreter.Options().setNumThreads(1)).also {
-            require(it.getInputTensor(0).shape().contentEquals(intArrayOf(1,5)))
-            require(it.getOutputTensor(0).shape().contentEquals(intArrayOf(1,2)))
+        if (!f.exists()) null else {
+            val engine=Interpreter(f,Interpreter.Options().setNumThreads(1))
+            try {
+                require(engine.getInputTensor(0).shape().contentEquals(intArrayOf(1,5)))
+                require(engine.getOutputTensor(0).shape().contentEquals(intArrayOf(1,2)))
+                engine
+            } catch(e: Exception) { engine.close();throw e }
         }
     }.getOrNull()
     val available get() = model != null

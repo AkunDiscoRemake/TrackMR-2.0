@@ -32,6 +32,7 @@ class HandTracker(private val context: Context) : AutoCloseable {
     private var bitmap: Bitmap? = null
     private var lastSubmitted = 0L
     private var lastModelTimestamp = 0L
+    private var lastImageTimestamp = 0L
     private var side = ""
     init { worker.execute { initialize() } }
     private fun initialize() {
@@ -59,8 +60,10 @@ class HandTracker(private val context: Context) : AutoCloseable {
             val captureNs = image.timestamp
             try {
                 val model = landmarker ?: return@execute
+                if(captureNs<=lastImageTimestamp)return@execute
+                lastImageTimestamp=captureNs
                 // Downsample YUV directly into a reusable 384px bitmap. No JPEG encode/decode.
-                val input = image.use { yuvToBitmap(it) }
+                val input = try { yuvToBitmap(image) } finally { image.close() }
                 val mpImage = BitmapImageBuilder(input).build()
                 val start = SystemClock.elapsedRealtimeNanos()
                 val stamp = maxOf(lastModelTimestamp + 1, captureNs / 1_000_000)
@@ -84,7 +87,7 @@ class HandTracker(private val context: Context) : AutoCloseable {
                     (SystemClock.elapsedRealtimeNanos()-start)/1e6f, pinch.update(filtered, seconds)))
             } catch (e: Exception) {
                 latest.set(null); status = "Mãos: ${e.javaClass.simpleName}"
-            } finally { image.close(); busy.set(false) }
+            } finally { image.close(); busy.set(false) } // Image.close is idempotent; includes model-unavailable path
         }
     }
     private fun yuvToBitmap(image: Image): Bitmap {
@@ -111,9 +114,13 @@ class HandTracker(private val context: Context) : AutoCloseable {
         }
         return bitmap!!.apply { setPixels(pixels,0,width,0,0,width,height) }
     }
-    override fun close() {
+    fun closeAfterDrain(onDrained: () -> Unit) {
         if (!closed.compareAndSet(false,true)) return
-        worker.execute { landmarker?.close(); landmarker=null; bitmap?.recycle(); latest.set(null) }
+        worker.execute {
+            try { landmarker?.close();landmarker=null;bitmap?.recycle();latest.set(null) }
+            finally { onDrained() }
+        }
         worker.shutdown() // ordered after any in-flight inference; do not interrupt native code
     }
+    override fun close() { closeAfterDrain {} }
 }

@@ -13,7 +13,7 @@
 
 | Área | Casos | Critério |
 |---|---|---|
-| Instalação | Android 10/12/14/15+, arm64; sem ARCore | Home abre sem pedir permissões desnecessárias |
+| Instalação | Android 10/12/14/15+, arm64; páginas 4/16 KiB; sem ARCore | Home abre sem pedir permissões desnecessárias |
 | Cardboard | QR salvo/ausente/inválido; dois perfis | Projeção/distorção corretas, escala não altera ótica |
 | Orientação | Yaw/pitch/roll, recenter, retorno de QR | Mundo estável sem eixo invertido; sem NaN |
 | 360° | Dois ambientes, costura/polos | Imagens certas, foto sem parallax artificial |
