@@ -14,7 +14,8 @@ class ShizukuBridge(context: Context) : AutoCloseable {
     private var bound=false
     private val connection=object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) { shell=IShellBridge.Stub.asInterface(binder) }
-        override fun onServiceDisconnected(name: ComponentName?) { shell=null }
+        override fun onServiceDisconnected(name: ComponentName?) { shell=null;bound=false }
+        override fun onBindingDied(name: ComponentName?) { shell=null;bound=false }
     }
     private val permissionResult=Shizuku.OnRequestPermissionResultListener{code,result->
         if(code==200&&result==PackageManager.PERMISSION_GRANTED)runCatching{requestOrBind()}
@@ -23,7 +24,7 @@ class ShizukuBridge(context: Context) : AutoCloseable {
     fun status(): String = runCatching { when {
         !Shizuku.pingBinder() -> "Shizuku não está em execução"
         Shizuku.checkSelfPermission()!=PackageManager.PERMISSION_GRANTED -> "Shizuku precisa de autorização"
-        shell==null -> "Shizuku autorizado • serviço desconectado"
+        shell==null||shell?.asBinder()?.isBinderAlive!=true -> "Shizuku autorizado • serviço desconectado"
         else -> "Shizuku conectado • uid ${runCatching { shell!!.uid() }.getOrDefault(-1)}"
     } }.getOrDefault("Shizuku: serviço interrompido; conecte novamente")
     fun requestOrBind() {

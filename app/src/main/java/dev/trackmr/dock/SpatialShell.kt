@@ -40,7 +40,7 @@ class SpatialShell(private val prefs: SharedPreferences,val atlas: SpatialAtlas)
             add(0,atlas.tile("empty"),w.position.x,w.position.y,w.position.z,w.width,w.height,w.yaw,w.opacity,0f,bg,.08f,.15f)
             fun child(id: Int,tile: Int,x: Float,y: Float,width: Float,height: Float,disabled: Boolean=false,kind: Int=0){
                 val cy=cos(w.yaw);val sy=sin(w.yaw)
-                add(id,tile,w.position.x+cy*x,w.position.y+y,w.position.z-sy*x+.006f,width,height,w.yaw,w.opacity,if(hovered==id)1f else 0f,.1f,.13f,.22f,if(disabled)2 else kind,if(selected==id&&now<selectedUntil)1f else 0f)
+                add(id,tile,w.position.x+cy*x,w.position.y+y,w.position.z-sy*x+.006f,width,height,w.yaw,w.opacity,if(hovered==id&&kind!=3)1f else 0f,.1f,.13f,.22f,if(disabled)2 else kind,if(selected==id&&now<selectedUntil)1f else 0f)
             }
             val title=when(w.kind){
                 WindowKind.HOME->"Central TrackMR";WindowKind.LIBRARY->"Biblioteca de apps";WindowKind.STORE->"Explorar"

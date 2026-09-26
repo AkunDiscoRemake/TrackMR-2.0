@@ -54,7 +54,7 @@ void main(){
  vec3 base=tint.rgb+glow+border*(.13+style.y*.3);
  float alpha=style.x;
  if(tint.a>.5&&tint.a<1.5){color=vec4(glyph.rgb,alpha*glyph.a);return;}
- if(tint.a>1.5){base*=.45;glyph.rgb*=.55;}
+ if(tint.a>1.5){base*=.45;/* Keep informational text readable even when not clickable. */}
  color=vec4(mix(base,glyph.rgb,glyph.a),alpha);
 })";
   program=makeProgram(vs,fs);vp=glGetUniformLocation(program,"vp");
@@ -66,13 +66,13 @@ void main(){
  int hit(mr::Vec3 origin,mr::Vec3 direction) {
   float nearest=100;int selected=-1;
   for(int i=0;i<count;i++){
-   const auto* d=data.data()+i*stride;if(d[6]<.1f||d[15]==2||d[18]<=0)continue;
+   const auto* d=data.data()+i*stride;if(d[6]<.1f||(d[18]<=0&&d[15]==1))continue;
    const float cy=std::cos(d[5]),sy=std::sin(d[5]);
    mr::Vec3 relative=origin-mr::Vec3{d[0],d[1],d[2]};
    mr::Vec3 o{relative.x*cy-relative.z*sy,relative.y,relative.x*sy+relative.z*cy};
    mr::Vec3 ray{direction.x*cy-direction.z*sy,direction.y,direction.x*sy+direction.z*cy};
    float t,u,v;
-   if(mr::curvedRectHit(o,ray,d[3]*(1+d[7]*.07f),d[4]*(1+d[7]*.07f),d[15]>2.5f?d[19]:0,t,u,v)&&t<=nearest){nearest=t;selected=int(d[18]);hitU=u;hitV=v;}
+   if(mr::curvedRectHit(o,ray,d[3]*(1+d[7]*.07f),d[4]*(1+d[7]*.07f),d[15]>2.5f?d[19]:0,t,u,v)&&t<=nearest){nearest=t;selected=(d[18]<=0||d[15]==2)?9999:int(d[18]);hitU=u;hitV=v;}
   }
   return selected;
  }

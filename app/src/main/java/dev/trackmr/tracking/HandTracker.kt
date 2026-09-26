@@ -23,7 +23,7 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
     @Volatile override var kind=BackendKind.NONE;private set
     @Volatile override var error: String?=null;private set
     override val available get()=kind!=BackendKind.NONE
-    val status get()=error ?: "${kind.name} • ${latest.get()?.hands?.size ?: 0} mãos • ${completed.get()} frames"
+    val status get()=if(!enabled)"Mãos pausadas pelo limite térmico" else error ?: "${kind.name} • ${latest.get()?.hands?.size ?: 0} mãos • ${completed.get()} frames"
     val completed=AtomicLong(0)
     @Volatile var intervalMs=33L
     @Volatile var inputWidth=384
@@ -54,7 +54,7 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
                 .setNumHands(2).setRunningMode(RunningMode.VIDEO).setMinHandDetectionConfidence(.5f)
                 .setMinHandPresenceConfidence(.5f).setMinTrackingConfidence(.5f).build())
             kind=if(gpu)BackendKind.MEDIAPIPE_GPU else BackendKind.MEDIAPIPE_CPU;error=null;failures=0
-        }catch(e: Exception){android.util.Log.e("TrackMR-hands","Backend initialization failed",e);if(gpu)initialize(false) else {kind=BackendKind.NONE;error="MediaPipe indisponível: ${e.javaClass.simpleName}"}}
+        }catch(e: Exception){android.util.Log.e("TrackMR-hands","Backend initialization failed",e);if(gpu)initialize(false) else {kind=BackendKind.NONE;error="MediaPipe indisponível: ${e.javaClass.simpleName}: ${e.message}"}}
     }
     @Synchronized override fun reserve(nowNs: Long): Boolean {
         if(closed.get()||!enabled||nowNs-lastSubmitted<intervalMs*1_000_000||!busy.compareAndSet(false,true)){dropped.incrementAndGet();return false}
