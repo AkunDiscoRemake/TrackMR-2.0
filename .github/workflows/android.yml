@@ -34,6 +34,8 @@ jobs:
         run: python3 scripts/check_shaders.py
       - name: OpenXR frame protocol tests
         run: g++ -std=c++17 -Wall -Wextra -Werror tests/openxr_protocol_test.cpp -o /tmp/openxr_protocol && /tmp/openxr_protocol
+      - name: Curved window hit / texture coordinate tests
+        run: g++ -std=c++17 -Wall -Wextra -Werror tests/curved_window_test.cpp -o /tmp/curve_test && /tmp/curve_test
       - name: Native geometry tests
         run: g++ -std=c++17 -Wall -Wextra -Werror tests/native_math_test.cpp -o /tmp/native_math_test && /tmp/native_math_test
       - name: Unit tests, APKs and lint
@@ -41,13 +43,13 @@ jobs:
       - name: APK integrity and provenance
         run: |
           mkdir -p artifacts
-          cp app/build/outputs/apk/debug/app-debug.apk artifacts/TrackMR-2.0-alpha02-arm64.apk
-          cp runtime/build/outputs/apk/debug/runtime-debug.apk artifacts/TrackMR-Runtime-Companion-alpha02-arm64.apk
+          cp app/build/outputs/apk/debug/app-debug.apk artifacts/TrackMR-2.0-alpha03-arm64.apk
+          cp runtime/build/outputs/apk/debug/runtime-debug.apk artifacts/TrackMR-Runtime-Companion-alpha03-arm64.apk
           cp dev-api/build/libs/dev-api.jar artifacts/TrackMR-Dev-API-v1.jar
           sha256sum artifacts/*.apk artifacts/*.jar > artifacts/SHA256SUMS.txt
           git rev-parse HEAD > artifacts/SOURCE_REVISION.txt
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-2.0-alpha02-arm64.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-Runtime-Companion-alpha02-arm64.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-2.0-alpha03-arm64.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-Runtime-Companion-alpha03-arm64.apk
       - uses: actions/upload-artifact@v4
         with:
           name: TrackMR-2.0-debug-arm64

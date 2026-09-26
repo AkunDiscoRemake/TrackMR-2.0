@@ -9,13 +9,17 @@ import rikka.shizuku.Shizuku
 
 class ShizukuBridge(context: Context) : AutoCloseable {
     private val args=Shizuku.UserServiceArgs(ComponentName(context,ShellBridgeService::class.java))
-        .daemon(false).processNameSuffix("windows").debuggable(false).version(1)
-    var shell: IShellBridge? = null; private set
+        .daemon(false).processNameSuffix("windows").debuggable(false).version(2)
+    @Volatile var shell: IShellBridge? = null; private set
     private var bound=false
     private val connection=object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) { shell=IShellBridge.Stub.asInterface(binder) }
         override fun onServiceDisconnected(name: ComponentName?) { shell=null }
     }
+    private val permissionResult=Shizuku.OnRequestPermissionResultListener{code,result->
+        if(code==200&&result==PackageManager.PERMISSION_GRANTED)runCatching{requestOrBind()}
+    }
+    init{Shizuku.addRequestPermissionResultListener(permissionResult)}
     fun status(): String = runCatching { when {
         !Shizuku.pingBinder() -> "Shizuku não está em execução"
         Shizuku.checkSelfPermission()!=PackageManager.PERMISSION_GRANTED -> "Shizuku precisa de autorização"
@@ -27,5 +31,5 @@ class ShizukuBridge(context: Context) : AutoCloseable {
         if (Shizuku.checkSelfPermission()!=PackageManager.PERMISSION_GRANTED) Shizuku.requestPermission(200)
         else if (!bound) { Shizuku.bindUserService(args,connection); bound=true }
     }
-    override fun close() { if(bound)runCatching { Shizuku.unbindUserService(args,connection,true) }; bound=false; shell=null }
+    override fun close() { Shizuku.removeRequestPermissionResultListener(permissionResult);if(bound)runCatching { Shizuku.unbindUserService(args,connection,true) }; bound=false; shell=null }
 }

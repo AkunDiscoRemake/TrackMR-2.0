@@ -37,7 +37,7 @@ enum class DockItem(val label: String) {
     ENVIRONMENTS("Ambientes"), CAPTURE("Captura"), NOTIFICATIONS("Notificações"),
     PERFORMANCE("Performance"), TRACKING("Tracking"), SYSTEM("Sistema")
 }
-data class DockSettings(var x: Float=0f,var y: Float=-.38f,var distance: Float=1.6f,
+data class DockSettings(var x: Float=0f,var y: Float=-.65f,var distance: Float=1.6f,
     var scale: Float=1f,var opacity: Float=.88f,var reducedMotion: Boolean=false) {
     fun constrain() { x=x.coerceIn(-2f,2f);y=y.coerceIn(-1.5f,1.5f);distance=distance.coerceIn(.7f,3f);scale=scale.coerceIn(.65f,1.6f);opacity=opacity.coerceIn(.35f,1f) }
 }
@@ -57,17 +57,17 @@ object SpatialBudget {
     const val FADING_LABELS=2
     const val KEYBOARD_KEYS="QWERTYUIOPASDFGHJKLZXCVBNM0123456789.:-/"
     // Empty + titles/actions + two shared chrome sets + dock + labels + keyboard + status.
-    fun worstCaseTiles()=1+WINDOWS*9+12+14+(FADING_LABELS+1)+KEYBOARD_KEYS.length+4+1+2
-    fun worstCaseItems()=WINDOWS*16+14+(FADING_LABELS+1)+KEYBOARD_KEYS.length+4+1+2
+    fun worstCaseTiles()=1+WINDOWS*9+12+14+(FADING_LABELS+1)+KEYBOARD_KEYS.length+4+1+2+5
+    fun worstCaseItems()=WINDOWS*16+14+(FADING_LABELS+1)+KEYBOARD_KEYS.length+4+1+2+5
 }
 
-enum class WindowKind { HOME, LIBRARY, STORE, SETTINGS, BROWSER, CAPTURE, DIAGNOSTICS, NOTIFICATIONS, TRACKING, SYSTEM, ENVIRONMENTS, ASSISTANT, APP_DETAIL, STORE_DETAIL }
+enum class WindowKind { HOME, LIBRARY, STORE, SETTINGS, BROWSER, CAPTURE, DIAGNOSTICS, NOTIFICATIONS, TRACKING, SYSTEM, ENVIRONMENTS, ASSISTANT, APP_DETAIL, STORE_DETAIL, ANDROID_APP }
 data class SpatialWindow(val id: Int,val kind: WindowKind,var position: Vec3=Vec3(0f,.22f,-1.9f),
-    var width: Float=1.35f,var height: Float=.78f,var yaw: Float=0f,var opacity: Float=.92f,
+    var width: Float=2.15f,var height: Float=1.4f,var yaw: Float=0f,var opacity: Float=.92f,
     var minimized: Boolean=false,var pinned: Boolean=false,var maximized: Boolean=false) {
     private var previousSize: Pair<Float,Float>?=null
     fun toggleMaximize(){
-        if(!maximized){previousSize=width to height;width=2.2f;height=1.35f}
+        if(!maximized){previousSize=width to height;width=2.7f;height=1.75f}
         else previousSize?.let{width=it.first;height=it.second}
         maximized=!maximized
     }
@@ -81,7 +81,7 @@ class WindowManager(private val limit: Int=SpatialBudget.WINDOWS) {
     fun spawn(kind: WindowKind): SpatialWindow {
         windows.firstOrNull { it.kind==kind }?.let { it.minimized=false;focus=it.id;return it }
         if(windows.size>=limit) { val victim=windows.firstOrNull { !it.pinned } ?: return windows.last();windows.remove(victim) }
-        return SpatialWindow(next++,kind,Vec3((windows.size%3-1)*.12f,.22f,-1.9f-windows.size*.1f)).also { windows.add(it);focus=it.id }
+        return SpatialWindow(next++,kind,Vec3(0f,.18f,-1.9f-windows.size*.12f)).also { windows.add(it);focus=it.id }
     }
     fun focus(id: Int) { if(windows.any { it.id==id&&!it.minimized })focus=id }
     fun close(id: Int) { windows.removeAll { it.id==id };if(focus==id)focus=windows.lastOrNull { !it.minimized }?.id }

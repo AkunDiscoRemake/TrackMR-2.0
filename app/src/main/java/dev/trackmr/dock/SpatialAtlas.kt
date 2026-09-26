@@ -8,7 +8,7 @@ import dev.trackmr.xr.SpatialBudget
 
 /** Bounded LRU atlas. Only changed 256x128 tiles upload; never an Android screen in a headset. */
 class SpatialAtlas(val texture: Int) : AutoCloseable {
-    private data class Tile(val index: Int,var text: String,var icon: Int,var stamp: Long)
+    private data class Tile(val index: Int,var text: String,var icon: Int,var stamp: Long,var aspect: Float=2f,var image: Bitmap?=null)
     private val cache=LinkedHashMap<String,Tile>()
     private var stamp=0L
     private val bitmap=Bitmap.createBitmap(256,128,Bitmap.Config.ARGB_8888)
@@ -19,7 +19,7 @@ class SpatialAtlas(val texture: Int) : AutoCloseable {
         GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D,0,GLES30.GL_RGBA,2048,2048,0,GLES30.GL_RGBA,GLES30.GL_UNSIGNED_BYTE,null)
     }
     fun begin(){stamp++}
-    fun tile(key: String,text: String="",icon: Int=-1): Int {
+    fun tile(key: String,text: String="",icon: Int=-1,aspect: Float=2f,image: Bitmap?=null): Int {
         var tile=cache[key]
         if(tile==null){
             val slot=if(cache.size<SpatialBudget.ATLAS_TILES)cache.size else {
@@ -29,18 +29,44 @@ class SpatialAtlas(val texture: Int) : AutoCloseable {
             tile=Tile(slot,"\u0000",-2,stamp);cache[key]=tile
         }
         tile.stamp=stamp
-        if(tile.text!=text||tile.icon!=icon){tile.text=text;tile.icon=icon;draw(tile)}
+        if(tile.text!=text||tile.icon!=icon||tile.aspect!=aspect||tile.image!==image){tile.text=text;tile.icon=icon;tile.aspect=aspect.coerceIn(.4f,20f);tile.image=image;draw(tile)}
         return tile.index
     }
     private fun draw(t: Tile){
         canvas.drawColor(Color.TRANSPARENT,PorterDuff.Mode.CLEAR)
         paint.color=Color.WHITE;paint.strokeWidth=5f;paint.style=Paint.Style.STROKE;paint.strokeCap=Paint.Cap.ROUND
-        if(t.icon>=0)icon(t.icon) else {
+        canvas.save()
+        val logicalWidth=128*t.aspect
+        canvas.scale(256/logicalWidth,1f)
+        if(t.icon>=0){canvas.translate(logicalWidth/2-128,0f);icon(t.icon)} else {
             paint.style=Paint.Style.FILL;paint.typeface=Typeface.create("sans-serif-medium",Typeface.NORMAL)
-            val lines=t.text.split('\n').take(4);paint.textSize=if(lines.size>2)20f else 23f
-            lines.forEachIndexed{i,line->var label=line;while(paint.measureText(label)>238&&label.length>1)label=label.dropLast(1)
-                canvas.drawText(label,(256-paint.measureText(label))/2,64-(lines.size-1)*14+i*28f,paint)}
+            if(t.image!=null){
+                canvas.drawBitmap(t.image!!,null,RectF(logicalWidth/2-30,7f,logicalWidth/2+30,67f),null)
+            }
+            paint.textSize=if(t.image!=null)19f else if(t.text.length<=2)44f else 25f
+            val available=logicalWidth-16
+            val rows=mutableListOf<String>()
+            for(paragraph in t.text.split('\n')){
+                var rest=paragraph
+                if(rest.isEmpty())rows.add("")
+                while(rest.isNotEmpty()){
+                    var end=paint.breakText(rest,true,available,null).coerceAtLeast(1)
+                    if(end<rest.length){val space=rest.lastIndexOf(' ',end);if(space>0)end=space}
+                    rows.add(rest.take(end));rest=rest.drop(end).trimStart()
+                }
+            }
+            val maximum=if(t.image!=null)2 else 4
+            val visible=rows.take(maximum).toMutableList()
+            if(rows.size>maximum&&visible.isNotEmpty()){
+                var last=visible.last();while(last.isNotEmpty()&&paint.measureText(last+"…")>available)last=last.dropLast(1)
+                visible[visible.lastIndex]=last+"…"
+            }
+            val lineHeight=paint.textSize*1.12f
+            val center=if(t.image!=null)96f else 64f
+            val baseline=center-(visible.size-1)*lineHeight/2-(paint.ascent()+paint.descent())/2
+            visible.forEachIndexed{i,line->canvas.drawText(line,(logicalWidth-paint.measureText(line))/2,baseline+i*lineHeight,paint)}
         }
+        canvas.restore()
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,texture)
         GLUtils.texSubImage2D(GLES30.GL_TEXTURE_2D,0,(t.index%8)*256,(t.index/8)*128,bitmap)
     }

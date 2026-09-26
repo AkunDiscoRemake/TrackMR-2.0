@@ -6,7 +6,7 @@ android {
     defaultConfig {
         applicationId = "dev.trackmr.runtime"
         minSdk = 29; targetSdk = 35
-        versionCode = 2; versionName = "2.0.0-alpha02"
+        versionCode = 3; versionName = "2.0.0-alpha03"
         ndk { abiFilters += "arm64-v8a" }
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=c++_shared" } }
     }

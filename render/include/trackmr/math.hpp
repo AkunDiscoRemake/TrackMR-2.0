@@ -47,6 +47,20 @@ inline float sphereHit(Vec3 origin, Vec3 direction, Vec3 center, float radius) {
     if(d<0) return -1;
     float t=-b-std::sqrt(d); return t>0?t:-1;
 }
+// Local rectangular surface, flat or curved toward the viewer. u/v match texture input.
+inline bool curvedRectHit(Vec3 o,Vec3 d,float width,float height,float radius,float& t,float& u,float& v){
+    if(width<=0||height<=0)return false;
+    float x;
+    if(radius>0){
+        const float a=d.x*d.x+d.z*d.z,b=o.x*d.x+(o.z-radius)*d.z;
+        const float c=o.x*o.x+(o.z-radius)*(o.z-radius)-radius*radius,disc=b*b-a*c;
+        if(a<1e-7f||disc<0)return false;
+        t=(-b+std::sqrt(disc))/a;
+        auto p=o+d*t;x=radius*std::atan2(p.x,radius-p.z);
+    }else{if(std::abs(d.z)<1e-7f)return false;t=-o.z/d.z;x=o.x+d.x*t;}
+    u=x/width+.5f;v=.5f-(o.y+d.y*t)/height;
+    return t>0&&u>=0&&u<=1&&v>=0&&v<=1;
+}
 // Shared analytic surface with the GPU: cylinder around origin or flat panel at z=-2.
 inline bool panelUv(Vec3 o, Vec3 d, bool curved, float aspect, float& u, float& v) {
     float t=-1, x=0;

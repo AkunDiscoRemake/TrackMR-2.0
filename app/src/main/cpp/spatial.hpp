@@ -26,12 +26,14 @@ uniform mat4 vp;
 out vec2 uv;out vec2 local;out vec4 tint;out vec4 style;
 void main(){
  const vec2 corners[6]=vec2[6](vec2(0,0),vec2(1,0),vec2(0,1),vec2(0,1),vec2(1,0),vec2(1,1));
- vec2 q=corners[gl_VertexID];local=q;
+ vec2 q=corners[gl_VertexID%6];q.x=(float(gl_VertexID/6)+q.x)/32.;local=q;
  vec2 p=(q-.5)*vec2(centerWidth.w,heightYawOpacityHover.x)*(1.+heightYawOpacityHover.w*.07);
  float yaw=heightYawOpacityHover.y;
- vec3 w=centerWidth.xyz+vec3(cos(yaw)*p.x,p.y,-sin(yaw)*p.x);
+ float radius=selectionIdRadius.w;
+ float z=0.;if(tintKind.a>2.5&&radius>0.){float angle=p.x/radius;z=radius*(1.-cos(angle));p.x=radius*sin(angle);}
+ vec3 w=centerWidth.xyz+vec3(cos(yaw)*p.x+sin(yaw)*z,p.y,-sin(yaw)*p.x+cos(yaw)*z);
  gl_Position=vp*vec4(w,1);
- uv=mix(uvRect.xy,uvRect.zw,vec2(q.x,1.-q.y));
+ uv=mix(uvRect.xy+vec2(.5/2048.),uvRect.zw-vec2(.5/2048.),vec2(q.x,1.-q.y));
  tint=tintKind;style=vec4(heightYawOpacityHover.zw,selectionIdRadius.x,selectionIdRadius.w);
 })";
   const char* fs=R"(#version 300 es
@@ -66,12 +68,11 @@ void main(){
   for(int i=0;i<count;i++){
    const auto* d=data.data()+i*stride;if(d[6]<.1f||d[15]==2||d[18]<=0)continue;
    const float cy=std::cos(d[5]),sy=std::sin(d[5]);
-   mr::Vec3 normal{sy,0,cy},center{d[0],d[1],d[2]};
-   float denom=direction.dot(normal);if(std::abs(denom)<.00001f)continue;
-   float t=(center-origin).dot(normal)/denom;if(t<=0||t>nearest)continue;
-   auto p=origin+direction*t-center;
-   float x=p.x*cy-p.z*sy;
-   if(std::abs(x)<=d[3]*(1+d[7]*.07f)*.5f&&std::abs(p.y)<=d[4]*(1+d[7]*.07f)*.5f){nearest=t;selected=int(d[18]);hitU=x/(d[3]*(1+d[7]*.07f))+.5f;hitV=.5f-p.y/(d[4]*(1+d[7]*.07f));}
+   mr::Vec3 relative=origin-mr::Vec3{d[0],d[1],d[2]};
+   mr::Vec3 o{relative.x*cy-relative.z*sy,relative.y,relative.x*sy+relative.z*cy};
+   mr::Vec3 ray{direction.x*cy-direction.z*sy,direction.y,direction.x*sy+direction.z*cy};
+   float t,u,v;
+   if(mr::curvedRectHit(o,ray,d[3]*(1+d[7]*.07f),d[4]*(1+d[7]*.07f),d[15]>2.5f?d[19]:0,t,u,v)&&t<=nearest){nearest=t;selected=int(d[18]);hitU=u;hitV=v;}
   }
   return selected;
  }
@@ -80,7 +81,7 @@ void main(){
   glUseProgram(program);glBindVertexArray(vao);glUniformMatrix4fv(vp,1,GL_FALSE,viewProjection.m);
   glUniformMatrix4fv(glGetUniformLocation(program,"contentTransform"),1,GL_FALSE,transform);
   glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-  glDrawArraysInstanced(GL_TRIANGLES,0,6,count);glDisable(GL_BLEND);
+  glDrawArraysInstanced(GL_TRIANGLES,0,32*6,count);glDisable(GL_BLEND);
  }
  void release(){if(program)glDeleteProgram(program);if(buffer)glDeleteBuffers(1,&buffer);if(vao)glDeleteVertexArrays(1,&vao);}
 };
