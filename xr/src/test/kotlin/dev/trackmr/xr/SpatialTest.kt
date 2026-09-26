@@ -9,5 +9,7 @@ class SpatialTest {
  @Test fun heatOverridesImmediately(){ val s=QualityScaler();assertFalse(s.update(16f,16.7f,4,90,QualityMode.QUALITY).handsAllowed);repeat(500){s.update(10f,16.7f,0,80,QualityMode.BALANCED)};assertTrue(s.quality.handsAllowed);assertTrue(s.quality.renderScale<=.95f) }
  @Test fun notificationsBounded(){ val n=LocalNotifications(3);repeat(20){n.add(it.toLong(),"error $it")};assertEquals(3,n.snapshot().size) }
  @Test fun recovery(){ assertTrue(RecoveryPolicy(2).safeMode);assertFalse(RecoveryPolicy(2).restoreLayout);assertFalse(RecoveryPolicy(0).safeMode) }
+ @Test fun maximizeIsReversible(){val w=SpatialWindow(1,WindowKind.HOME);val initial=w.width to w.height;repeat(100){w.toggleMaximize();w.toggleMaximize()};assertEquals(initial.first,w.width,0f);assertEquals(initial.second,w.height,0f)}
+ @Test fun staleClockNotReportedAsLatency(){assertNull(ClockDomain().ageMs(1,5_000_000_000,true))}
  @Test fun restoreIds(){ val m=WindowManager();m.restore(SpatialWindow(20,WindowKind.HOME));assertEquals(21,m.spawn(WindowKind.STORE).id) }
 }

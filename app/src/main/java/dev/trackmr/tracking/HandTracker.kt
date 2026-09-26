@@ -53,14 +53,14 @@ class HandTracker(private val context: Context) : CameraConsumer, HandBackend {
                 .setNumHands(2).setRunningMode(RunningMode.VIDEO).setMinHandDetectionConfidence(.6f)
                 .setMinHandPresenceConfidence(.6f).setMinTrackingConfidence(.65f).build())
             kind=if(gpu)BackendKind.MEDIAPIPE_GPU else BackendKind.MEDIAPIPE_CPU;error=null;failures=0
-        }catch(e: Exception){if(gpu)initialize(false) else {kind=BackendKind.NONE;error="MediaPipe indisponível: ${e.javaClass.simpleName}"}}
+        }catch(e: Exception){android.util.Log.e("TrackMR-hands","Backend initialization failed",e);if(gpu)initialize(false) else {kind=BackendKind.NONE;error="MediaPipe indisponível: ${e.javaClass.simpleName}"}}
     }
     @Synchronized override fun reserve(nowNs: Long): Boolean {
         if(closed.get()||!enabled||nowNs-lastSubmitted<intervalMs*1_000_000||!busy.compareAndSet(false,true)){dropped.incrementAndGet();return false}
         lastSubmitted=nowNs;return true
     }
     override fun cancelReservation(){busy.set(false)}
-    override fun submit(image: Image,viewTransform: FloatArray,clockKnown: Boolean){
+    @Synchronized override fun submit(image: Image,viewTransform: FloatArray,clockKnown: Boolean){
         val received=SystemClock.elapsedRealtimeNanos()
         if(closed.get()){image.close();busy.set(false);return}
         worker.execute{
@@ -136,7 +136,7 @@ class HandTracker(private val context: Context) : CameraConsumer, HandBackend {
         }
         return bitmap!!.apply { setPixels(pixels,0,width,0,0,width,height) }
     }
-    fun closeAfterDrain(onDrained: ()->Unit){
+    @Synchronized fun closeAfterDrain(onDrained: ()->Unit){
         if(!closed.compareAndSet(false,true))return
         worker.execute{try{landmarker?.close();landmarker=null;bitmap?.recycle();latest.set(null)}finally{onDrained()}}
         worker.shutdown()

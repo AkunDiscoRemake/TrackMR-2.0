@@ -15,7 +15,7 @@ set_property(TARGET GfxPluginCardboard PROPERTY LINK_DEPENDS
 add_library(trackmr SHARED renderer.cpp)
 target_include_directories(trackmr PRIVATE "${ROOT}/render/include" "${ROOT}/.deps/cardboard/sdk/include")
 target_compile_options(trackmr PRIVATE -Wall -Wextra -Werror=return-type -O2)
-target_link_libraries(trackmr GfxPluginCardboard android log GLESv3)
+target_link_libraries(trackmr GfxPluginCardboard android log GLESv3 EGL)
 # Android 15+ 16 KiB page compatibility.
 target_link_options(trackmr PRIVATE "-Wl,-z,max-page-size=16384")
 target_link_options(GfxPluginCardboard PRIVATE "-Wl,-z,max-page-size=16384")

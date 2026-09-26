@@ -9,6 +9,7 @@
 #include "cardboard.h"
 #include "trackmr/math.hpp"
 #include "spatial.hpp"
+#include "gpu_timer.hpp"
 using namespace mr;
 namespace {
 JavaVM* vm=nullptr;
@@ -30,9 +31,11 @@ uniform samplerExternalOES capture;
 uniform samplerExternalOES camera;
 uniform mat4 cameraProjection,cameraUv;
 uniform int backgroundMode;
+uniform highp usampler2D realDepth;uniform int depthActive;
 uniform int scene,curved,capturing,highlight,target;
 uniform float aspect;
 uniform vec4 balls[6];
+uniform vec3 anchors[8];uniform int anchorCount;uniform float ambient;
 void main(){
  vec4 p=invProjection*vec4(ndc,1,1);
  vec3 d=normalize(mat3(world)*(p.xyz/p.w));
@@ -49,11 +52,13 @@ void main(){
    }
  }
 
+ float measuredDepth=1000.;
+ if(backgroundMode==1&&depthActive==1){vec4 dc=cameraProjection*vec4(normalize(p.xyz/p.w),0);vec2 duv=dc.xy/dc.w*.5+.5;vec2 dt=(cameraUv*vec4(duv,0,1)).xy;float value=float(texture(realDepth,dt).r)*.001;if(value>.05)measuredDepth=value;}
+ float nearest=1000.;
  if(scene>0){
-   float nearest=1000.;
    for(int i=0;i<6;i++){
      vec3 oc=o-balls[i].xyz;float b=dot(oc,d),disc=b*b-dot(oc,oc)+balls[i].w*balls[i].w;
-     if(disc>=0.){float t=-b-sqrt(disc);if(t>0.&&t<nearest){
+     if(disc>=0.){float t=-b-sqrt(disc);if(t>0.&&t<nearest&&t*abs(normalize(p.xyz/p.w).z)<measuredDepth+.04){
        nearest=t;vec3 n=normalize(o+d*t-balls[i].xyz);
        vec3 base=i==target?vec3(.4,1.,.82):vec3(.56,.37,1.);
        float light=.28+.72*max(0.,dot(n,normalize(vec3(-1,2,1))));
@@ -62,6 +67,11 @@ void main(){
        if(i==highlight)c+=vec3(.16);
      }}
    }
+ }
+ for(int i=0;i<8;i++){
+   if(i>=anchorCount)break;
+   vec3 oc=o-anchors[i];float b=dot(oc,d);float disc=b*b-dot(oc,oc)+.0064;
+   if(disc>=0.){float t=-b-sqrt(disc);if(t>0.&&t<nearest&&t*abs(normalize(p.xyz/p.w).z)<measuredDepth+.04){nearest=t;vec3 n=normalize(o+d*t-anchors[i]);c=vec3(.3,1.,.7)*(.3+.7*max(n.y,.0))*clamp(ambient,.4,1.5);}}
  }
  color=vec4(c,1);
 }
@@ -92,8 +102,8 @@ struct Renderer {
  GLuint prog=0,lineProg=0,vao=0,lineVao=0,lineBuffer=0,fb=0,texture=0;
  GLint invLoc,worldLoc,transformLoc,sceneLoc,curveLoc,captureLoc,aspectLoc,ballsLoc,highlightLoc,targetLoc;
  int width=0,height=0,rw=0,rh=0,scene=0,score=0,hover=-1;
- SpatialLayer ui;
- GLuint cameraTexture=0;
+ SpatialLayer ui;GpuTimer gpu;float ambient=1;
+ GLuint cameraTexture=0,depthTexture=0;bool depthActive=false;
  Mat4 cameraProjection=Mat4::identity(),cameraUv=Mat4::identity();
  int backgroundMode=0;
  float cameraFrame[32]{};
@@ -111,7 +121,7 @@ struct Renderer {
    (void)env;
  }
  ~Renderer(){
-   ui.release();
+   gpu.release();ui.release();
    CardboardHeadTracker_destroy(tracker);CardboardLensDistortion_destroy(lens);
    CardboardDistortionRenderer_destroy(distortion);
    if(prog)glDeleteProgram(prog);if(lineProg)glDeleteProgram(lineProg);
@@ -121,7 +131,7 @@ struct Renderer {
  }
  // Called on every new EGL context. Old GL names must not be deleted in the new context.
  void surface(){
-   fb=texture=0; prog=program(vertex,fragment);lineProg=program(lineVertex,lineFragment);ui.initialize(program);
+   fb=texture=0; prog=program(vertex,fragment);lineProg=program(lineVertex,lineFragment);ui.initialize(program);gpu.initialize();
    glGenVertexArrays(1,&vao);glGenVertexArrays(1,&lineVao);glGenBuffers(1,&lineBuffer);
    glBindVertexArray(lineVao);glBindBuffer(GL_ARRAY_BUFFER,lineBuffer);
    glBufferData(GL_ARRAY_BUFFER,sizeof(handLines),nullptr,GL_DYNAMIC_DRAW);
@@ -132,7 +142,7 @@ struct Renderer {
    aspectLoc=glGetUniformLocation(prog,"aspect");ballsLoc=glGetUniformLocation(prog,"balls");
    highlightLoc=glGetUniformLocation(prog,"highlight");targetLoc=glGetUniformLocation(prog,"target");
    glUseProgram(prog);glUniform1i(glGetUniformLocation(prog,"panorama"),0);
-   glUniform1i(glGetUniformLocation(prog,"panel"),1);glUniform1i(glGetUniformLocation(prog,"capture"),2);glUniform1i(glGetUniformLocation(prog,"camera"),3);
+   glUniform1i(glGetUniformLocation(prog,"panel"),1);glUniform1i(glGetUniformLocation(prog,"capture"),2);glUniform1i(glGetUniformLocation(prog,"camera"),3);glUniform1i(glGetUniformLocation(prog,"realDepth"),4);
    // VrActivity creates a fresh renderer for each EGL context.
    dirty=true;
  }
@@ -170,7 +180,7 @@ struct Renderer {
    dirty=false;return true;
  }
  int draw(GLuint sky,GLuint panel,GLuint external,const float* transform,bool capturing,const float* ar,int64_t predictionNs){
-   if(!configure())return -1;
+   if(!configure())return -1;gpu.begin();
    float position[3],q[4];
    // Fetch pose as late as possible, after texture uploads and ARCore work.
    CardboardHeadTracker_getPose(tracker,bootNs()+std::clamp<int64_t>(predictionNs,0,30000000),kLandscapeLeft,position,q);
@@ -203,11 +213,14 @@ struct Renderer {
    glActiveTexture(GL_TEXTURE1);glBindTexture(GL_TEXTURE_2D,panel);
    glActiveTexture(GL_TEXTURE2);glBindTexture(0x8D65,external);
    glActiveTexture(GL_TEXTURE3);glBindTexture(0x8D65,cameraTexture);
+   glActiveTexture(GL_TEXTURE4);glBindTexture(GL_TEXTURE_2D,depthTexture);
+   glUniform1i(glGetUniformLocation(prog,"depthActive"),depthActive);
    glUniform1i(glGetUniformLocation(prog,"backgroundMode"),backgroundMode);
    glUniformMatrix4fv(glGetUniformLocation(prog,"cameraProjection"),1,GL_FALSE,cameraProjection.m);
    glUniformMatrix4fv(glGetUniformLocation(prog,"cameraUv"),1,GL_FALSE,cameraUv.m);
    glUniform1i(sceneLoc,scene);glUniform1i(curveLoc,curved);glUniform1i(captureLoc,capturing);
    glUniform1f(aspectLoc,aspect);glUniform1i(highlightLoc,hover);glUniform1i(targetLoc,score%6);
+   glUniform3fv(glGetUniformLocation(prog,"anchors"),anchorCount,anchors.data());glUniform1i(glGetUniformLocation(prog,"anchorCount"),anchorCount);glUniform1f(glGetUniformLocation(prog,"ambient"),ambient);
    glUniform4fv(ballsLoc,6,balls.data());glUniformMatrix4fv(transformLoc,1,GL_FALSE,transform);
    for(int i=0;i<2;i++){
      glViewport(i*rw/2,0,rw/2,rh);glUseProgram(prog);glBindVertexArray(vao);
@@ -230,7 +243,7 @@ struct Renderer {
      glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(cross),cross);glDrawArrays(GL_LINES,0,4);
    }
    CardboardDistortionRenderer_renderEyeToDisplay(distortion,0,0,0,width,height,&descriptions[0],&descriptions[1]);
-   return hover;
+   gpu.end();return hover;
  }
 };
 Renderer* ptr(jlong p){return reinterpret_cast<Renderer*>(p);}
@@ -271,3 +284,9 @@ JNI(spatial) void JNICALL Java_dev_trackmr_vr_NativeBridge_spatial(JNIEnv* e,job
  e->GetFloatArrayRegion(data,0,ui.count*SpatialLayer::stride,ui.data.data());
  ui.pointerX=x;ui.pointerY=y;ui.handPointer=hand;
 }
+
+JNI(anchors) void JNICALL Java_dev_trackmr_vr_NativeBridge_anchors(JNIEnv* e,jobject,jlong p,jfloatArray positions,jfloat light){auto r=ptr(p);r->anchorCount=std::min(8,e->GetArrayLength(positions)/3);e->GetFloatArrayRegion(positions,0,r->anchorCount*3,r->anchors.data());r->ambient=light;}
+JNI(hitPoint) void JNICALL Java_dev_trackmr_vr_NativeBridge_hitPoint(JNIEnv* e,jobject,jlong p,jfloatArray result){if(e->GetArrayLength(result)<2)return;float uv[]={ptr(p)->ui.hitU,ptr(p)->ui.hitV};e->SetFloatArrayRegion(result,0,2,uv);}
+JNI(gpuTime) jfloat JNICALL Java_dev_trackmr_vr_NativeBridge_gpuTime(JNIEnv*,jobject,jlong p){return ptr(p)->gpu.milliseconds;}
+
+JNI(depth) void JNICALL Java_dev_trackmr_vr_NativeBridge_depth(JNIEnv*,jobject,jlong p,jint texture,jboolean active){ptr(p)->depthTexture=texture;ptr(p)->depthActive=active;}

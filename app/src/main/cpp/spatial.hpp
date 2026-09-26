@@ -12,7 +12,7 @@ struct SpatialLayer {
  GLuint program=0,vao=0,buffer=0;
  GLint vp=-1;
  float pointerX=.5f,pointerY=.5f;
- bool handPointer=false;
+ bool handPointer=false;float hitU=.5f,hitV=.5f;
  mr::Vec3 dockPointer{0,0,-1};
  void initialize(GLuint (*makeProgram)(const char*,const char*)) {
   const char* vs=R"(#version 300 es
@@ -61,7 +61,7 @@ void main(){
   for(int i=0;i<5;i++){glEnableVertexAttribArray(i+1);glVertexAttribPointer(i+1,4,GL_FLOAT,GL_FALSE,stride*sizeof(float),reinterpret_cast<void*>(i*4*sizeof(float)));glVertexAttribDivisor(i+1,1);}
   glUseProgram(program);glUniform1i(glGetUniformLocation(program,"atlas"),1);glUniform1i(glGetUniformLocation(program,"surfaceContent"),2);
  }
- int hit(mr::Vec3 origin,mr::Vec3 direction) const {
+ int hit(mr::Vec3 origin,mr::Vec3 direction) {
   float nearest=100;int selected=-1;
   for(int i=0;i<count;i++){
    const auto* d=data.data()+i*stride;if(d[6]<.1f||d[15]==2||d[18]<=0)continue;
@@ -71,7 +71,7 @@ void main(){
    float t=(center-origin).dot(normal)/denom;if(t<=0||t>nearest)continue;
    auto p=origin+direction*t-center;
    float x=p.x*cy-p.z*sy;
-   if(std::abs(x)<=d[3]*(1+d[7]*.07f)*.5f&&std::abs(p.y)<=d[4]*(1+d[7]*.07f)*.5f){nearest=t;selected=int(d[18]);}
+   if(std::abs(x)<=d[3]*(1+d[7]*.07f)*.5f&&std::abs(p.y)<=d[4]*(1+d[7]*.07f)*.5f){nearest=t;selected=int(d[18]);hitU=x/(d[3]*(1+d[7]*.07f))+.5f;hitV=.5f-p.y/(d[4]*(1+d[7]*.07f));}
   }
   return selected;
  }

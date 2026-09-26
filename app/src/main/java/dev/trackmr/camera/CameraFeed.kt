@@ -21,6 +21,8 @@ class CameraFrame {
     var anchors=0
     var light=1f
     var depthAvailable=false
+    var depthData: java.nio.ByteBuffer?=null
+    var depthWidth=0;var depthHeight=0;var depthTimestampNs=0L
     var width=0;var height=0
 }
 interface CameraFeed : AutoCloseable {

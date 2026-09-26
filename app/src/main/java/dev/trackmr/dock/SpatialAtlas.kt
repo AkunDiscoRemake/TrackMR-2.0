@@ -9,7 +9,6 @@ import dev.trackmr.xr.DockItem
 class SpatialAtlas(val texture: Int) : AutoCloseable {
     private data class Tile(val index: Int,var text: String,var icon: Int,var stamp: Long)
     private val cache=LinkedHashMap<String,Tile>()
-    private val pinned=HashSet<String>()
     private var stamp=0L
     private val bitmap=Bitmap.createBitmap(256,128,Bitmap.Config.ARGB_8888)
     private val canvas=Canvas(bitmap)
@@ -18,17 +17,17 @@ class SpatialAtlas(val texture: Int) : AutoCloseable {
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,texture)
         GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D,0,GLES30.GL_RGBA,2048,2048,0,GLES30.GL_RGBA,GLES30.GL_UNSIGNED_BYTE,null)
     }
-    fun begin(){pinned.clear();stamp++}
+    fun begin(){stamp++}
     fun tile(key: String,text: String="",icon: Int=-1): Int {
         var tile=cache[key]
         if(tile==null){
             val slot=if(cache.size<128)cache.size else {
-                val old=cache.entries.filter{it.key !in pinned}.minByOrNull{it.value.stamp} ?: error("Atlas visible budget exceeded")
+                val old=cache.entries.filter{it.value.stamp!=stamp}.minByOrNull{it.value.stamp} ?: error("Atlas visible budget exceeded")
                 cache.remove(old.key);old.value.index
             }
             tile=Tile(slot,"\u0000",-2,stamp);cache[key]=tile
         }
-        tile.stamp=stamp;pinned+=key
+        tile.stamp=stamp
         if(tile.text!=text||tile.icon!=icon){tile.text=text;tile.icon=icon;draw(tile)}
         return tile.index
     }

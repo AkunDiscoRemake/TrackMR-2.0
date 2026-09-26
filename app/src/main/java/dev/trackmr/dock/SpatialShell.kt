@@ -21,6 +21,11 @@ class SpatialShell(private val prefs: SharedPreferences,val atlas: SpatialAtlas)
     var detail="Câmera ainda não disponível"
     var onDock: (DockItem)->Unit={}
     var surfaceKind: WindowKind?=null
+    var keyboardText="";private set
+    private var keyboardSubmit: ((String)->Unit)?=null
+    private val keys="QWERTYUIOPASDFGHJKLZXCVBNM0123456789.:-/"
+    fun keyboard(initial: String="",submit: (String)->Unit){keyboardText=initial.take(1200);keyboardSubmit=submit}
+    fun highContrast(enabled: Boolean){highContrast=enabled;prefs.edit().putBoolean("contrast",enabled).apply()}
     private val animation=Array(14){HoverAnimation()}
     private var selected=-1
     private var selectedUntil=0L
@@ -37,7 +42,11 @@ class SpatialShell(private val prefs: SharedPreferences,val atlas: SpatialAtlas)
             }
             child(0,atlas.tile("title-${w.kind}",w.kind.name),-.15f,w.height*.42f,w.width*.48f,.12f,kind=1)
             listOf("−","×",if(w.pinned)"FIXO" else "FIXAR","MOVER","±","GIRAR").forEachIndexed{i,label->child(1000+w.kind.ordinal*10+i,atlas.tile("chrome-$i-${w.pinned}",label),w.width*(-.4f+i*.16f),-w.height*.42f,w.width*.145f,.085f)}
-            if(surfaceKind==w.kind){child(0,atlas.tile("empty"),0f,0f,w.width*.95f,w.height*.68f,kind=3)}
+            if(surfaceKind==w.kind){
+                child(8000+w.kind.ordinal,atlas.tile("empty"),0f,-w.height*.045f,w.width*.95f,w.height*.49f,kind=3)
+                val controls=if(w.kind==WindowKind.BROWSER)listOf("URL","VOLTAR","DIGITAR","PARAR") else listOf("", "PARAR CAPTURA")
+                controls.forEachIndexed{i,t->if(t.isNotEmpty())child(2000+w.kind.ordinal*100+i,atlas.tile("surface-${w.kind}-$i",t),(i-(controls.size-1)/2f)*w.width*.23f,w.height*.28f,w.width*.22f,.09f)}
+            }
             else {
                 val actions=pages[w.kind].orEmpty().take(8)
                 actions.forEachIndexed { i,a->
@@ -59,6 +68,11 @@ class SpatialShell(private val prefs: SharedPreferences,val atlas: SpatialAtlas)
                 if(a>.01f)add(0,atlas.tile("label-$i",item.label),x,y-.105f*settings.scale,z+.012f,.32f*settings.scale*(.92f+a*.08f),.06f*settings.scale,-angle,a,0f,0f,0f,0f,1)
             }
         }
+        if(keyboardSubmit!=null){
+            add(0,atlas.tile("typing",keyboardText.takeLast(55)),0f,.23f,-1.15f,1.14f,.13f,0f,.96f,0f,.1f,.15f,.22f)
+            keys.forEachIndexed{i,char->add(9000+i,atlas.tile("key-$char",char.toString()),(i%10-4.5f)*.108f,.09f-(i/10)*.105f,-1.15f,.097f,.09f,0f,.96f,if(hovered==9000+i)1f else 0f,.13f,.16f,.27f)}
+            listOf("ESPAÇO","APAGAR","ENVIAR","FECHAR").forEachIndexed{i,t->add(9100+i,atlas.tile("keyboard-$i",t),(i-1.5f)*.28f,-.36f,-1.14f,.26f,.09f,0f,.97f,if(hovered==9100+i)1f else 0f,.22f,.18f,.4f)}
+        }
         add(0,atlas.tile("headline",headline),0f,.75f,-2f,1.45f,.18f,0f,.94f,0f,.04f,if(cameraActive).25f else .08f,.16f)
         add(0,atlas.tile("detail",detail),0f,.60f,-2f,1.5f,.14f,0f,.9f,0f,.07f,.09f,.16f)
     }
@@ -74,10 +88,12 @@ class SpatialShell(private val prefs: SharedPreferences,val atlas: SpatialAtlas)
     fun select(id: Int,now: Long): Boolean {
         if(id<0)return false
         selected=id;selectedUntil=now+180_000_000
+        if(id in 9000 until 9000+keys.length){keyboardText=(keyboardText+keys[id-9000].lowercaseChar()).take(1200);return true}
+        if(id in 9100..9103){when(id){9100->keyboardText=(keyboardText+" ").take(1200);9101->keyboardText=keyboardText.dropLast(1);9102->{val callback=keyboardSubmit;keyboardSubmit=null;callback?.invoke(keyboardText)};9103->keyboardSubmit=null};return true}
         if(id in 100..113){onDock(DockItem.entries[id-100]);return true}
         if(id in 1000..1199){val k=(id-1000)/10;val action=(id-1000)%10
             val w=windows.windows.find{it.kind.ordinal==k} ?: return false;windows.focus(w.id)
-            when(action){0->windows.minimize(w.id);1->windows.close(w.id);2->w.pinned=!w.pinned;3->{movingWindow=!movingWindow;movingDock=false};4->{w.maximized=!w.maximized;w.resize(if(w.maximized)1.35f else 1/1.35f)};5->if(!w.pinned)w.yaw+=.15f};save();return true
+            when(action){0->windows.minimize(w.id);1->windows.close(w.id);2->w.pinned=!w.pinned;3->{movingWindow=!movingWindow;movingDock=false};4->{w.toggleMaximize()};5->if(!w.pinned)w.yaw+=.15f};save();return true
         }
         if(id>=2000){val kind=WindowKind.entries.getOrNull((id-2000)/100) ?: return false;val index=(id-2000)%100
             windows.windows.find{it.kind==kind}?.let{windows.focus(it.id)}

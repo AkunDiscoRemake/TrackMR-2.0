@@ -22,15 +22,15 @@ class NeuralGovernor(context: Context) : AutoCloseable {
     private val input=arrayOf(FloatArray(5))
     private val output=arrayOf(FloatArray(2))
     /** <= 1Hz; inputs normalized using the documented training contract. */
-    fun advise(frameMs: Float, handMs: Float, thermal: Int, battery: Float, baseline: PerformanceGovernor): Float {
-        val engine=model ?: return baseline.scale
+    fun advise(frameMs: Float, handMs: Float, thermal: Int, battery: Float, baseline: Float): Float {
+        val engine=model ?: return baseline
         input[0][0]=frameMs/33.3f; input[0][1]=handMs/50; input[0][2]=thermal/6f
-        input[0][3]=battery.coerceIn(0f,1f); input[0][4]=baseline.scale
+        input[0][3]=battery.coerceIn(0f,1f); input[0][4]=baseline
         return runCatching {
             engine.run(input,output)
             val candidate=output[0][0]
-            if (!candidate.isFinite()) baseline.scale else candidate.coerceIn(.6f,baseline.scale)
-        }.getOrDefault(baseline.scale)
+            if (!candidate.isFinite()) baseline else candidate.coerceIn(.6f,baseline)
+        }.getOrDefault(baseline)
     }
     override fun close() { model?.close() }
 }

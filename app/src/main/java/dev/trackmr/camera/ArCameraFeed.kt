@@ -8,7 +8,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /** Single owner for passthrough, SLAM, plane detection and inference camera images. */
-class ArCameraFeed(private val activity: Activity,private val consumer: CameraConsumer?) : CameraFeed {
+class ArCameraFeed(private val activity: Activity,private val consumer: CameraConsumer?,private val useDepth: Boolean=false) : CameraFeed {
     override val name="ARCore"
     override var status="ARCore: iniciando";private set
     private var session: Session?=null
@@ -16,6 +16,9 @@ class ArCameraFeed(private val activity: Activity,private val consumer: CameraCo
     private var lastFrame: Frame?=null
     private var origin: Pose?=null
     private val matrix=FloatArray(16)
+    private var lastSourceTimestamp=0L
+    private var lastDepthImageTimestamp=0L
+    private var cameraClockKnown=false
     private val anchors=mutableListOf<Anchor>()
     private val coordinates=ByteBuffer.allocateDirect(24).order(ByteOrder.nativeOrder()).asFloatBuffer()
     private val transformed=ByteBuffer.allocateDirect(24).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -30,9 +33,12 @@ class ArCameraFeed(private val activity: Activity,private val consumer: CameraCo
                     focusMode=Config.FocusMode.AUTO
                     planeFindingMode=Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     lightEstimationMode=Config.LightEstimationMode.AMBIENT_INTENSITY
-                    // Depth is queried as a capability, not falsely claimed as rendered occlusion.
-                    depthMode=Config.DepthMode.DISABLED
+                    depthMode=if(useDepth&&s.isDepthModeSupported(Config.DepthMode.AUTOMATIC))Config.DepthMode.AUTOMATIC else Config.DepthMode.DISABLED
                 })
+                cameraClockKnown=runCatching{
+                    val manager=activity.getSystemService(android.hardware.camera2.CameraManager::class.java)
+                    manager.getCameraCharacteristics(s.cameraConfig.cameraId).get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE)==android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME
+                }.getOrDefault(false)
                 output.depthAvailable=s.isDepthModeSupported(Config.DepthMode.AUTOMATIC)
                 s.setCameraTextureName(texture)
                 @Suppress("DEPRECATION")
@@ -47,7 +53,8 @@ class ArCameraFeed(private val activity: Activity,private val consumer: CameraCo
             @Suppress("DEPRECATION")
             s.setDisplayGeometry(activity.windowManager.defaultDisplay.rotation,width,height)
             val f=s.update();lastFrame=f
-            output.timestampNs=f.timestamp;output.active=f.timestamp>0&&SystemClock.elapsedRealtimeNanos()-f.timestamp in 0L..350_000_000L
+            if(f.timestamp!=lastSourceTimestamp&&f.timestamp>0){lastSourceTimestamp=f.timestamp;output.timestampNs=SystemClock.elapsedRealtimeNanos()}
+            output.active=output.timestampNs>0&&SystemClock.elapsedRealtimeNanos()-output.timestampNs in 0L..350_000_000L
             output.width=width;output.height=height
             f.camera.getProjectionMatrix(output.projection,0,.05f,100f)
             coordinates.rewind();coordinates.put(floatArrayOf(-1f,-1f,1f,-1f,-1f,1f)).rewind();transformed.rewind()
@@ -62,7 +69,7 @@ class ArCameraFeed(private val activity: Activity,private val consumer: CameraCo
                     coordinates.rewind();coordinates.put(floatArrayOf(0f,0f,1f,0f,0f,1f)).rewind();transformed.rewind()
                     f.transformCoordinates2d(Coordinates2d.IMAGE_NORMALIZED,coordinates,Coordinates2d.VIEW_NORMALIZED,transformed)
                     val map=FloatArray(6);transformed.rewind();transformed.get(map)
-                    consumer.submit(f.acquireCameraImage(),map,true)
+                    consumer.submit(f.acquireCameraImage(),map,cameraClockKnown)
                 }catch(_: Exception){consumer.cancelReservation()}
             }
             output.tracking=f.camera.trackingState==TrackingState.TRACKING
@@ -72,6 +79,16 @@ class ArCameraFeed(private val activity: Activity,private val consumer: CameraCo
                 origin!!.inverse().compose(pose).toMatrix(matrix,0);output.pose=matrix
                 status="ARCore • 6DoF • câmera ativa"
             }else{output.pose=null;status="ARCore • câmera ativa • ${f.camera.trackingFailureReason}"}
+            if(useDepth&&output.depthAvailable&&SystemClock.elapsedRealtimeNanos()-output.depthTimestampNs>66_000_000){
+                try{f.acquireDepthImage16Bits().use{image->
+                    val size=image.width*image.height*2
+                    if(output.depthData?.capacity()!=size)output.depthData=ByteBuffer.allocateDirect(size).order(ByteOrder.nativeOrder())
+                    val target=output.depthData!!;target.clear();val plane=image.planes[0];val source=plane.buffer
+                    for(row in 0 until image.height){val line=source.duplicate();line.position(source.position()+row*plane.rowStride);line.limit(line.position()+image.width*2);target.put(line)}
+                    target.flip();output.depthWidth=image.width;output.depthHeight=image.height
+                    if(image.timestamp!=lastDepthImageTimestamp){lastDepthImageTimestamp=image.timestamp;output.depthTimestampNs=SystemClock.elapsedRealtimeNanos()}
+                }}catch(_: com.google.ar.core.exceptions.NotYetAvailableException){} // depth is sparse/optional
+            }
             output.planes=s.getAllTrackables(Plane::class.java).count{it.trackingState==TrackingState.TRACKING&&it.subsumedBy==null}
             output.anchors=anchors.count{it.trackingState==TrackingState.TRACKING}
             if(f.lightEstimate.state==LightEstimate.State.VALID)output.light=f.lightEstimate.pixelIntensity.coerceIn(.25f,2f)

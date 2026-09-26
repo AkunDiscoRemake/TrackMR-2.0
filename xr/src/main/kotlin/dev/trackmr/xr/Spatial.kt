@@ -50,10 +50,16 @@ class HoverAnimation {
     }
 }
 
-enum class WindowKind { HOME, LIBRARY, STORE, SETTINGS, BROWSER, CAPTURE, DIAGNOSTICS, NOTIFICATIONS, TRACKING, SYSTEM, ENVIRONMENTS, ASSISTANT }
+enum class WindowKind { HOME, LIBRARY, STORE, SETTINGS, BROWSER, CAPTURE, DIAGNOSTICS, NOTIFICATIONS, TRACKING, SYSTEM, ENVIRONMENTS, ASSISTANT, APP_DETAIL, STORE_DETAIL }
 data class SpatialWindow(val id: Int,val kind: WindowKind,var position: Vec3=Vec3(0f,.22f,-1.9f),
     var width: Float=1.35f,var height: Float=.78f,var yaw: Float=0f,var opacity: Float=.92f,
     var minimized: Boolean=false,var pinned: Boolean=false,var maximized: Boolean=false) {
+    private var previousSize: Pair<Float,Float>?=null
+    fun toggleMaximize(){
+        if(!maximized){previousSize=width to height;width=2.2f;height=1.35f}
+        else previousSize?.let{width=it.first;height=it.second}
+        maximized=!maximized
+    }
     fun resize(factor: Float) { if(!factor.isFinite())return;width=(width*factor).coerceIn(.45f,2.8f);height=(height*factor).coerceIn(.3f,1.8f) }
 }
 /** Session-relative layout persistence is NOT a persistent physical/spatial anchor. */
