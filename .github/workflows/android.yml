@@ -40,9 +40,12 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror tests/native_math_test.cpp -o /tmp/native_math_test && /tmp/native_math_test
       - name: Unit tests, APKs and lint
         run: ./scripts/ci-build.sh
+      - name: Verify bundled Hand Landmarker (offline runtime asset)
+        run: python3 scripts/verify_model.py app/src/main/assets/hand_landmarker.task app/build/outputs/apk/debug/app-debug.apk
       - name: APK integrity and provenance
         run: |
           mkdir -p artifacts
+          cp .cache/hand-model-provenance.json artifacts/HAND_MODEL.json
           cp app/build/outputs/apk/debug/app-debug.apk artifacts/TrackMR-2.0-alpha03-arm64.apk
           cp runtime/build/outputs/apk/debug/runtime-debug.apk artifacts/TrackMR-Runtime-Companion-alpha03-arm64.apk
           cp dev-api/build/libs/dev-api.jar artifacts/TrackMR-Dev-API-v1.jar

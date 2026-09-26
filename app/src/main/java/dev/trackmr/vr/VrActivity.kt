@@ -58,6 +58,8 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
     private var advisedScale=1f
     private var lastDepthNs=0L
     private val hitUv=FloatArray(2)
+    private val overlayOne=FloatArray(63)
+    private val overlayTwo=FloatArray(126)
     private var screenshotConfirmUntil=0L
     private var importTarget="assistant"
     private var appQuery=""
@@ -251,7 +253,10 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
             val fillMr=prefs.getBoolean("fillMr",true)
             NativeBridge.viewOptions(handle,fillMr)
             // Explicit camera overlay, not a metric hand or opaque fake hand mesh.
-            val overlay=if(sample!=null&&prefs.getBoolean("handOverlay",true))batch!!.hands.flatMap{it.points.asList()}.toFloatArray() else null
+            val overlay=if(sample!=null&&prefs.getBoolean("handOverlay",true)){
+                val list=batch!!.hands;val target=if(list.size==1)overlayOne else overlayTwo
+                list.forEachIndexed{i,hand->hand.points.copyInto(target,i*63)};target
+            }else null
             NativeBridge.hands(handle,overlay)
             if(capturing&&shell.surfaceKind!=null&&shell.windows.windows.none{it.kind==shell.surfaceKind&&!it.minimized}){
                 capturing=false;shell.surfaceKind=null;runOnUiThread{stopContent()}
@@ -342,7 +347,7 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         val sample=hands?.latest?.get();val ram=ActivityManager.MemoryInfo().also{getSystemService(ActivityManager::class.java).getMemoryInfo(it)}
         shell.pages[WindowKind.DIAGNOSTICS]=listOf(info("p95 ${"%.1f".format(stats.percentile(.95f))} ms\n${"%.0f".format(1000/lastFrameMs.coerceAtLeast(1f))} callbacks/s"),info("CPU frame ${"%.1f".format(renderMs)} ms\nGPU ${if(gpuMs<0)"N/D" else "%.1f ms".format(gpuMs)}"),info("Inferência ${sample?.inferenceMs?.let{"%.1f".format(it)} ?: "—"} ms\nFiltro ${sample?.filterMs?.let{"%.1f".format(it)} ?: "—"} ms"),info("Térmico $thermal\nEscala ${"%.0f".format(quality.quality.renderScale*100)}%"),info("RAM livre ${ram.availMem/1048576} MiB\nE2E: requer medição externa"),info("${width}×$height\n${"%.0f".format(1000/targetMs)} Hz"),info("Frames de câmera pulados\n${hands?.dropped?.get() ?: 0}"),info("Pré ${sample?.preprocessMs?.let{"%.1f".format(it)} ?: "—"} ms\nChegada ${if(sample?.clockKnown==true)((sample.receivedNs-sample.sensorTimestampNs)/1e6).toInt().toString()+" ms" else "N/D"}"))
         shell.pages[WindowKind.NOTIFICATIONS]=notices.snapshot().takeLast(8).reversed().map{info((if(it.error)"ERRO\n" else "")+it.message)}.ifEmpty{listOf(info("Sem notificações"))}
-        val diagnostic="TRACKMR ${dev.trackmr.BuildConfig.VERSION_NAME}\n${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\nCâmera: ${feed?.status ?: "desligada"}\nMãos: ${hands?.status ?: "desligadas"}\nPré/infer/filtro: ${sample?.preprocessMs}/${sample?.inferenceMs}/${sample?.filterMs} ms\nIdade local: ${sample?.let{(SystemClock.elapsedRealtimeNanos()-it.timestampNs)/1_000_000}} ms\nTérmica: $thermal, framebuffer: ${width}x${height} × ${quality.quality.renderScale}\nShizuku: ${shizuku.status()}"
+        val diagnostic="TRACKMR ${dev.trackmr.BuildConfig.VERSION_NAME}\n${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\nCâmera: ${feed?.status ?: "desligada"}\nMãos: ${hands?.status ?: "desligadas"}\nHand Landmarker no APK: ${hands?.modelBytes ?: 0} bytes\nPré/infer/filtro: ${sample?.preprocessMs}/${sample?.inferenceMs}/${sample?.filterMs} ms\nIdade local: ${sample?.let{(SystemClock.elapsedRealtimeNanos()-it.timestampNs)/1_000_000}} ms\nTérmica: $thermal, framebuffer: ${width}x${height} × ${quality.quality.renderScale}\nShizuku: ${shizuku.status()}"
         shell.pages[WindowKind.SYSTEM]=listOf(action("Autorizar câmera"){main{cameraPermission.launch(Manifest.permission.CAMERA)}},action("Desligar câmera"){cameraAllowed=false;stopCamera();experience.camera(CameraState.STOPPED,"Câmera desligada pelo usuário")},action(if(SystemClock.elapsedRealtimeNanos()<screenshotConfirmUntil)"CONFIRMAR screenshot" else "Screenshot (inclui MR)"){
             val now=SystemClock.elapsedRealtimeNanos();if(now<screenshotConfirmUntil){screenshotConfirmUntil=0;main{SpatialScreenshot.capture(this,view,io){notify(it)}}}else{screenshotConfirmUntil=now+5_000_000_000;notify("A imagem incluirá o passthrough. Toque de novo em até 5 s para confirmar.");refreshPages()}
         },action("Sessão OpenXR real"){main{openXrSession.launch(Intent(this,dev.trackmr.openxr.SessionActivity::class.java))}},action("Configuração do app"){main{startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName")))}},action("Sair com segurança"){shell.save();main{finish()}},action(if(prefs.getBoolean("fillMr",true))"MR: preencher → óptico" else "MR: óptico → preencher"){prefs.edit().putBoolean("fillMr",!prefs.getBoolean("fillMr",true)).apply();notify("Preencher amplia a câmera para cada olho, sem adicionar campo de visão real. Depth exige modo óptico.")},action("Copiar diagnóstico"){main{getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("TrackMR diagnóstico",diagnostic));notify("Diagnóstico copiado, sem imagens ou landmarks")}})

@@ -38,6 +38,9 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
     private val gestures=Array(2){GestureEngine()}
     private val lastSeen=LongArray(2)
     private val twoHands=TwoHandGestures()
+    private var plan: YuvSamplingPlan?=null
+    private val lumaTable=IntArray(256)
+    @Volatile var modelBytes=0L;private set
     private var pixels=IntArray(0)
     private var bitmap: Bitmap?=null
     private var lastSubmitted=0L
@@ -48,6 +51,8 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
     private fun initialize(gpu: Boolean){
         try{
             landmarker?.close();landmarker=null
+            modelBytes=context.assets.openFd("hand_landmarker.task").use{it.length}
+            check(modelBytes in 1_000_001..19_999_999){"Hand Landmarker ausente/inválido no APK"}
             val delegate=if(gpu)Delegate.GPU else Delegate.CPU
             landmarker=HandLandmarker.createFromOptions(context,HandLandmarker.HandLandmarkerOptions.builder()
                 .setBaseOptions(BaseOptions.builder().setModelAssetPath("hand_landmarker.task").setDelegate(delegate).build())
@@ -57,7 +62,7 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
         }catch(e: Exception){android.util.Log.e("TrackMR-hands","Backend initialization failed",e);if(gpu)initialize(false) else {kind=BackendKind.NONE;error="MediaPipe indisponível: ${e.javaClass.simpleName}: ${e.message}"}}
     }
     @Synchronized override fun reserve(nowNs: Long): Boolean {
-        if(closed.get()||!enabled||nowNs-lastSubmitted<intervalMs*1_000_000||!busy.compareAndSet(false,true)){dropped.incrementAndGet();return false}
+        if(closed.get()||!enabled||!available||nowNs-lastSubmitted<intervalMs*1_000_000||!busy.compareAndSet(false,true)){dropped.incrementAndGet();return false}
         lastSubmitted=nowNs;return true
     }
     override fun cancelReservation(){busy.set(false)}
@@ -66,14 +71,19 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
         if(closed.get()){image.close();busy.set(false);return}
         worker.execute{
             val capture=received // local acquisition clock for expiry; sensor clock only for diagnostics
-            val sensorTimestamp=image.timestamp
+            var imageClosed=false
             try{
+                val sensorTimestamp=image.timestamp
+                val crop=image.cropRect
+                val cropX=crop.left.toFloat()/image.width;val cropY=crop.top.toFloat()/image.height
+                val cropW=crop.width().toFloat()/image.width;val cropH=crop.height().toFloat()/image.height
                 val model=landmarker ?: return@execute
                 if(capture<=lastImageTimestamp)return@execute
                 lastImageTimestamp=capture
                 val preStart=SystemClock.elapsedRealtimeNanos()
                 val rotation=ImageOrientation.degrees(viewTransform)
                 val input=yuvToBitmap(image,rotation)
+                image.close();imageClosed=true // release camera buffer before expensive inference
                 val preMs=(SystemClock.elapsedRealtimeNanos()-preStart)/1e6f
                 val mpImage=BitmapImageBuilder(input).build()
                 val inferStart=SystemClock.elapsedRealtimeNanos()
@@ -84,7 +94,7 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
                 val observations=result.landmarks().mapIndexed { index,points->
                     val raw=FloatArray(63)
                     points.forEachIndexed{i,p->
-                        val x=ImageOrientation.sourceX(p.x(),p.y(),rotation);val y=ImageOrientation.sourceY(p.x(),p.y(),rotation)
+                        val x=cropX+ImageOrientation.sourceX(p.x(),p.y(),rotation)*cropW;val y=cropY+ImageOrientation.sourceY(p.x(),p.y(),rotation)*cropH
                         raw[i*3]=viewTransform[0]+x*(viewTransform[2]-viewTransform[0])+y*(viewTransform[4]-viewTransform[0])
                         raw[i*3+1]=viewTransform[1]+x*(viewTransform[3]-viewTransform[1])+y*(viewTransform[5]-viewTransform[1])
                         raw[i*3+2]=p.z()
@@ -103,23 +113,28 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
                 latest.set(Batch(filtered,events,capture,received,sensorTimestamp,preMs,inferMs,(SystemClock.elapsedRealtimeNanos()-filterStart)/1e6f,clockKnown))
                 failures=0;error=null;completed.incrementAndGet()
             }catch(e: Exception){latest.set(null);error="Tracking: ${e.javaClass.simpleName}: ${e.message}";android.util.Log.e("TrackMR-hands",error,e);if(++failures>=3&&kind==BackendKind.MEDIAPIPE_GPU)initialize(false)}
-            finally{image.close();busy.set(false)}
+            finally{if(!imageClosed)image.close();busy.set(false)}
         }
     }
     private var imageQuality=1f
     private fun yuvToBitmap(image: Image,rotation: Int): Bitmap {
-        val sourceWidth=minOf(inputWidth.coerceIn(192,512),image.width)
-        val sourceHeight=(image.height.toLong()*sourceWidth/image.width).toInt()
-        val width=if(rotation%180==0)sourceWidth else sourceHeight
-        val height=if(rotation%180==0)sourceHeight else sourceWidth
-        if (bitmap?.width != width || bitmap?.height != height) {
-            bitmap?.recycle(); bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            pixels = IntArray(width*height)
+        val crop=image.cropRect
+        val yp=image.planes[0];val up=image.planes[1];val vp=image.planes[2]
+        val requested=inputWidth.coerceIn(192,512)
+        var p=plan
+        if(p==null||p.left!=crop.left||p.top!=crop.top||p.sourceWidth!=crop.width()||p.sourceHeight!=crop.height()||p.targetWidth!=requested||p.rotation!=rotation||
+            p.yStride!=yp.rowStride||p.yPixel!=yp.pixelStride||p.uStride!=up.rowStride||p.uPixel!=up.pixelStride||p.vStride!=vp.rowStride||p.vPixel!=vp.pixelStride){
+            p=YuvSamplingPlan(crop.left,crop.top,crop.width(),crop.height(),requested,rotation,yp.rowStride,yp.pixelStride,up.rowStride,up.pixelStride,vp.rowStride,vp.pixelStride);plan=p
         }
-        val yPlane=image.planes[0]; val uPlane=image.planes[1]; val vPlane=image.planes[2]
-        val yBase=yPlane.buffer.position(); val uBase=uPlane.buffer.position(); val vBase=vPlane.buffer.position()
+        val width=p.width;val height=p.height
+        if(bitmap?.width!=width||bitmap?.height!=height){
+            bitmap?.recycle();bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);pixels=IntArray(width*height)
+        }
+        val yPlane=yp;val uPlane=up;val vPlane=vp
+        val yBuffer=yp.buffer;val uBuffer=up.buffer;val vBuffer=vp.buffer
+        val yBase=yBuffer.position();val uBase=uBuffer.position();val vBase=vBuffer.position()
         var sum=0.0;var variance=0.0;var count=0;var prior=0
-        for(sy in 0 until image.height step 16)for(sx in 0 until image.width step 16){
+        for(sy in crop.top until crop.bottom step 16)for(sx in crop.left until crop.right step 16){
             val luma=yPlane.buffer.get(yBase+sy*yPlane.rowStride+sx*yPlane.pixelStride).toInt() and 255
             sum+=luma;variance+=kotlin.math.abs(luma-prior);prior=luma;count++
         }
@@ -127,18 +142,18 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
         imageQuality=when{mean<15->.3f;mean<30->.65f;variance/count.coerceAtLeast(1)<2->.65f;else->1f}
         // Bounded exposure compensation, never expensive deblurring or invented detail.
         val gain=if(mean<65)(65/mean.coerceAtLeast(35f)).coerceAtMost(1.4f) else 1f
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                val nx=(x+.5f)/width;val ny=(y+.5f)/height
-                val sx=(ImageOrientation.sourceX(nx,ny,rotation)*image.width).toInt().coerceIn(0,image.width-1)
-                val sy=(ImageOrientation.sourceY(nx,ny,rotation)*image.height).toInt().coerceIn(0,image.height-1)
-                val yy=(((yPlane.buffer.get(yBase+sy*yPlane.rowStride+sx*yPlane.pixelStride).toInt() and 255)-16)*gain).toInt()
-                val u=(uPlane.buffer.get(uBase+(sy/2)*uPlane.rowStride+(sx/2)*uPlane.pixelStride).toInt() and 255)-128
-                val v=(vPlane.buffer.get(vBase+(sy/2)*vPlane.rowStride+(sx/2)*vPlane.pixelStride).toInt() and 255)-128
-                val r=((298*yy+409*v+128) shr 8).coerceIn(0,255)
-                val g=((298*yy-100*u-208*v+128) shr 8).coerceIn(0,255)
-                val b=((298*yy+516*u+128) shr 8).coerceIn(0,255)
-                pixels[y*width+x]=(255 shl 24) or (r shl 16) or (g shl 8) or b
+        for(i in 0..255)lumaTable[i]=298*((i-16)*gain).toInt()
+        for(y in 0 until height){
+            val yr=yBase+p.yRows[y];val ur=uBase+p.uRows[y];val vr=vBase+p.vRows[y]
+            var index=y*width
+            for(x in 0 until width){
+                val yy=lumaTable[yBuffer.get(yr+p.yColumns[x]).toInt() and 255]
+                val u=(uBuffer.get(ur+p.uColumns[x]).toInt() and 255)-128
+                val v=(vBuffer.get(vr+p.vColumns[x]).toInt() and 255)-128
+                val red=((yy+409*v+128) shr 8).coerceIn(0,255)
+                val green=((yy-100*u-208*v+128) shr 8).coerceIn(0,255)
+                val blue=((yy+516*u+128) shr 8).coerceIn(0,255)
+                pixels[index++]=(255 shl 24) or (red shl 16) or (green shl 8) or blue
             }
         }
         return bitmap!!.apply { setPixels(pixels,0,width,0,0,width,height) }
