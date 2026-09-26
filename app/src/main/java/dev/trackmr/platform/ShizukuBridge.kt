@@ -9,7 +9,7 @@ import rikka.shizuku.Shizuku
 
 class ShizukuBridge(context: Context) : AutoCloseable {
     private val args=Shizuku.UserServiceArgs(ComponentName(context,ShellBridgeService::class.java))
-        .daemon(false).processNameSuffix("windows").debuggable(false).version(2)
+        .daemon(false).processNameSuffix("windows").debuggable(false).version(3)
     @Volatile var shell: IShellBridge? = null; private set
     private var bound=false
     private val connection=object : ServiceConnection {

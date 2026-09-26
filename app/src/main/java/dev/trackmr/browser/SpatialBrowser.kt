@@ -55,6 +55,15 @@ class SpatialBrowser(private val context: Context,private val notify: (String)->
         val down=MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,x,y,0);val up=MotionEvent.obtain(now,now+30,MotionEvent.ACTION_UP,x,y,0)
         try{view.dispatchTouchEvent(down);view.dispatchTouchEvent(up)}finally{down.recycle();up.recycle()}
     }
+    private var handDown=0L
+    fun pointer(action: Int,u: Float,v: Float){
+        val view=web ?: return;val now=SystemClock.uptimeMillis()
+        if(action==MotionEvent.ACTION_DOWN)handDown=now
+        if(handDown==0L)return
+        val event=MotionEvent.obtain(handDown,now,action,u.coerceIn(0f,1f)*width,v.coerceIn(0f,1f)*height,0)
+        try{view.dispatchTouchEvent(event)}finally{event.recycle()}
+        if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL)handDown=0
+    }
     fun text(value: String){
         // Deliberately no JS bridge. Quoted text goes only to the currently focused DOM field.
         val literal=JSONObject.quote(value.take(2048))
@@ -62,5 +71,5 @@ class SpatialBrowser(private val context: Context,private val notify: (String)->
     }
     fun scroll(delta: Float){web?.scrollBy(0,(delta*height*3).toInt())}
     fun back(){if(web?.canGoBack()==true)web?.goBack()}
-    override fun close(){web?.stopLoading();web?.destroy();web=null;presentation?.dismiss();presentation=null;display?.release();display=null}
+    override fun close(){pointer(MotionEvent.ACTION_CANCEL,.5f,.5f);web?.stopLoading();web?.destroy();web=null;presentation?.dismiss();presentation=null;display?.release();display=null}
 }

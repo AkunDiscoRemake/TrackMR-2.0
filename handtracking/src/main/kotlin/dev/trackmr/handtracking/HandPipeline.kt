@@ -10,7 +10,7 @@ enum class BackendKind { MEDIAPIPE_GPU, MEDIAPIPE_CPU, OPENXR, CUSTOM, NONE }
 data class HandObservation(val landmarks: FloatArray,val timestampNs: Long,val side: Side,
     val handednessConfidence: Float,val imageQuality: Float=1f) // quality is heuristic, not landmark probability
 class HandSample(val points: FloatArray,val velocity: FloatArray,val acceleration: FloatArray,
-    val timestampNs: Long,val side: Side,val confidence: Float,val predicted: Boolean=false)
+    val timestampNs: Long,val side: Side,val confidence: Float,val predicted: Boolean=false,val trackId: Int=-1)
 interface HandBackend : AutoCloseable {
     val kind: BackendKind
     val available: Boolean
@@ -19,7 +19,7 @@ interface HandBackend : AutoCloseable {
 interface GestureRecognizer { val priority: Int;fun recognize(sample: HandSample): List<GestureEvent> }
 
 /** Small bounded temporal state, no UI/Android/backend dependency. One instance per persistent hand. */
-class TemporalHandPipeline(var mode: FilterMode=FilterMode.ONE_EURO) {
+class TemporalHandPipeline(var mode: FilterMode=FilterMode.ONE_EURO,private val trackId: Int=-1) {
     private val euro=Array(63){OneEuro(2.2,3.0,1.5)}
     private val kalman=Array(63){KalmanAxis()}
     private val previous=FloatArray(63)
@@ -56,7 +56,7 @@ class TemporalHandPipeline(var mode: FilterMode=FilterMode.ONE_EURO) {
             points[i]=filtered;previous[i]=filtered;velocity[i]=v[i];prev2Raw[i]=prevRaw[i];prevRaw[i]=raw
         }
         time=o.timestampNs
-        return HandSample(points,v,acceleration,time,o.side,confidence).also{last=it}
+        return HandSample(points,v,acceleration,time,o.side,confidence,trackId=trackId).also{last=it}
     }
     /** At most 25ms extrapolation; confidence decays. Never dispatch gestures from this sample. */
     fun predict(displayNs: Long): HandSample? {
@@ -65,7 +65,7 @@ class TemporalHandPipeline(var mode: FilterMode=FilterMode.ONE_EURO) {
         if(age !in 0..80_000_000L)return null
         val dt=(minOf(age/1e6f,predictionMs.coerceIn(0f,25f))/1000)
         val p=FloatArray(63){(s.points[it]+s.velocity[it]*dt).coerceIn(-.3f,1.3f)}
-        return HandSample(p,s.velocity,s.acceleration,s.timestampNs,s.side,s.confidence*(1-age/100_000_000f),true)
+        return HandSample(p,s.velocity,s.acceleration,s.timestampNs,s.side,s.confidence*(1-age/100_000_000f),true,s.trackId)
     }
 }
 

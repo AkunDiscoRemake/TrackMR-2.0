@@ -7,8 +7,8 @@ android {
         applicationId = "dev.trackmr"
         minSdk = 29
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.0.0-alpha03"
+        versionCode = 4
+        versionName = "2.0.0-alpha04"
         ndk { abiFilters += "arm64-v8a" }
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=c++_shared" } }
     }

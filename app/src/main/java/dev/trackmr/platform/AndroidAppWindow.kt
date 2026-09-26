@@ -20,6 +20,21 @@ class AndroidAppWindow(private val context: Context,private val bridge: ShizukuB
     var width=1280;private set
     var height=800;private set
     private var lastResize=0L
+    private val motions=dev.trackmr.xr.PointerMailbox()
+    fun pointer(action: Int,u: Float,v: Float,scroll: Float=0f){
+        if(closed)return
+        val id=display?.display?.displayId ?: return
+        val service=bridge.shell ?: return
+        if(!motions.offer(dev.trackmr.xr.PointerPacket(action,u,v,scroll)))return
+        try{worker.execute{
+            try{while(true){val packet=motions.take() ?: break
+                check(service.handPointer(id,packet.action,packet.u,packet.v,packet.scroll)){"Gesto expirou ou entrada recusada; abra a mão e tente de novo"}
+            }}catch(e: Exception){
+                motions.abandon();runCatching{service.handPointer(id,3,.5f,.5f,0f)}
+                main.post{if(!closed)report("Entrada por mão: ${e.message}",true)}
+            }
+        }}catch(_: java.util.concurrent.RejectedExecutionException){motions.abandon();report("Fila de entrada ocupada",true)}
+    }
     private fun command(fatal: Boolean=false,action: (IShellBridge,Int)->Unit){
         if(closed)return
         val id=display?.display?.displayId ?: return
@@ -52,5 +67,5 @@ class AndroidAppWindow(private val context: Context,private val bridge: ShizukuB
         if(kotlin.math.abs(w-width)<32)return
         lastResize=now;buffers(w,800);display?.resize(w,800,240);width=w;height=800
     }
-    override fun close(){if(closed)return;closed=true;worker.shutdownNow();display?.release();display=null}
+    override fun close(){if(closed)return;closed=true;motions.abandon();worker.shutdownNow();display?.release();display=null}
 }

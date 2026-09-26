@@ -9,7 +9,7 @@ enum class GestureKind {
 }
 enum class GestureCommand { SELECT, BACK, HOME, SCREENSHOT, DOCK_SUMMON, ENVIRONMENT_SWITCH, MR_VR_SWITCH, CONFIRM, CANCEL, AIR_BUTTON }
 data class GestureEvent(val kind: GestureKind,val timestampNs: Long,val confidence: Float,
-    val side: Side,val x: Float=0f,val y: Float=0f)
+    val side: Side,val x: Float=0f,val y: Float=0f,val trackId: Int=-1)
 class GestureBindings {
     val commands=mutableMapOf(GestureKind.PINCH to GestureCommand.SELECT,GestureKind.PALM_MENU to GestureCommand.DOCK_SUMMON)
     fun resolve(event: GestureEvent): GestureCommand?=if(event.confidence>=.6f)commands[event.kind] else null
@@ -28,14 +28,14 @@ class GestureEngine {
     fun reset(){lastNs=0;pinch=false;grab=false;lastPinch=0;palmSince=0;palmFired=false;lastPose=null;swipeSince=0}
     fun update(s: HandSample): List<GestureEvent> {
         if(s.predicted||s.confidence<.6f||s.timestampNs<=lastNs)return emptyList()
-        if(lastNs>0&&s.timestampNs-lastNs>180_000_000)reset()
+        if(lastNs>0&&s.timestampNs-lastNs>350_000_000)reset()
         val p=s.points
         fun d(a: Int,b: Int)=hypot(p[a*3]-p[b*3],p[a*3+1]-p[b*3+1])
         val palm=d(5,17);if(palm<.025f){reset();return emptyList()}
         val ratio=d(4,8)/palm
         val pinched=ratio<if(pinch).5f else .28f
         val events=ArrayList<GestureEvent>(3)
-        fun emit(k: GestureKind,x: Float=0f,y: Float=0f){events+=GestureEvent(k,s.timestampNs,s.confidence,s.side,x,y)}
+        fun emit(k: GestureKind,x: Float=0f,y: Float=0f){events+=GestureEvent(k,s.timestampNs,s.confidence,s.side,x,y,s.trackId)}
         val x=p[8*3];val y=p[8*3+1]
         if(pinched&&!pinch){emit(GestureKind.PINCH);if(lastPinch>0&&s.timestampNs-lastPinch in 150_000_000..450_000_000)emit(GestureKind.DOUBLE_PINCH);lastPinch=s.timestampNs}
         if(!pinched&&pinch)emit(GestureKind.PINCH_RELEASE)

@@ -53,10 +53,11 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
     private lateinit var audio: SpatialAudio
     private var browser: SpatialBrowser?=null
     @Volatile private var appWindow: AndroidAppWindow?=null
-    private var lastAppScroll=0L
     private var neural: NeuralGovernor?=null
     private var advisedScale=1f
     private var lastDepthNs=0L
+    private val primaryHand=PrimaryHand()
+    private val handInput=HandPointer()
     private val hitUv=FloatArray(2)
     private val overlayOne=FloatArray(63)
     private val overlayTwo=FloatArray(126)
@@ -155,8 +156,9 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         window.decorView.systemUiVisibility=View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         view=GLSurfaceView(this).apply{
             setEGLContextClientVersion(3);setEGLConfigChooser(8,8,8,0,0,0);preserveEGLContextOnPause=true;setRenderer(this@VrActivity)
-            contentDescription="TrackMR: ambiente espacial, dock por olhar ou mão"
-            setOnTouchListener{_,event->if(event.action==MotionEvent.ACTION_UP)queueEvent{select()};true}
+            contentDescription="TrackMR: aponte com a mão, selecione com pinça e arraste segurando"
+            // Physical screen taps do not operate the XR shell. Volume/controller is rescue only.
+            setOnTouchListener{_,_->true}
         }
         setContentView(view) // No 2D launcher, Android toolbar, TextView HUD or rasterized desktop.
         onBackPressedDispatcher.addCallback(this,object: OnBackPressedCallback(true){override fun handleOnBackPressed(){view.queueEvent{if(::shell.isInitialized){if(scene>0){scene=0;NativeBridge.scene(handle,0)}else shell.windows.focus?.let{shell.windows.close(it)}}}}})
@@ -200,6 +202,7 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         cameraStarted=SystemClock.elapsedRealtimeNanos();experience.camera(CameraState.STARTING,feed!!.status)
     }
     private fun stopCamera(){
+        handInput.cancel().forEach{dispatchHand(it)}
         val oldFeed=feed;val oldHands=hands;feed=null;hands=null;cameraFrame=null
         oldFeed?.pause()
         if(oldHands!=null)oldHands.closeAfterDrain{oldFeed?.close()}else oldFeed?.close()
@@ -241,14 +244,14 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
             if(frame?.active==true)experience.camera(CameraState.ACTIVE,feed!!.status)
             else if(feed!=null&&start-cameraStarted>5_000_000_000)experience.camera(CameraState.ERROR,feed!!.status)
             val batch=hands?.latest?.get()
-            val sample=batch?.hands?.firstOrNull()?.takeIf{SampleFreshness.usable(start-it.timestampNs,batch.preprocessMs+batch.inferenceMs+batch.filterMs)}
+            val sample=batch?.let{primaryHand.choose(it.hands)}?.takeIf{SampleFreshness.usable(start-it.timestampNs,batch.preprocessMs+batch.inferenceMs+batch.filterMs)}
             var px=.5f;var py=.5f
             if(sample!=null){
-                val prediction=minOf((start-sample.timestampNs)/1e9f,.018f)
-                px=(sample.points[24]+sample.velocity[24]*prediction).coerceIn(0f,1f);py=(sample.points[25]+sample.velocity[25]*prediction).coerceIn(0f,1f)
-                if(batch!!.timestampNs!=lastHandNs){lastHandNs=batch.timestampNs;batch.events.forEach{e->
-                    if(e.kind==GestureKind.PINCH)select()else if(e.kind==GestureKind.SCROLL&&shell.surfaceKind==WindowKind.BROWSER)runOnUiThread{browser?.scroll(e.y)}else if(e.kind==GestureKind.SCROLL&&shell.surfaceKind==WindowKind.ANDROID_APP&&start-lastAppScroll>250_000_000){lastAppScroll=start;runOnUiThread{appWindow?.scroll(e.y)}}else shell.gesture(e)
-                }}
+                val p=sample.points
+                val palm=kotlin.math.hypot(p[15]-p[51],p[16]-p[52])
+                val closing=palm>.025f&&kotlin.math.hypot(p[12]-p[24],p[13]-p[25])/palm<.5f
+                val prediction=if(closing||handInput.pressed)0f else minOf((start-sample.timestampNs)/1e9f,.018f)
+                px=(p[24]+sample.velocity[24]*prediction).coerceIn(0f,1f);py=(p[25]+sample.velocity[25]*prediction).coerceIn(0f,1f)
             }
             val fillMr=prefs.getBoolean("fillMr",true)
             NativeBridge.viewOptions(handle,fillMr)
@@ -278,7 +281,7 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
                 battery=getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                 shell.cameraActive=frame?.active==true
                 shell.headline=when(experience.active){Experience.MR->"MR • CÂMERA ATIVA";Experience.VR->"VR • ${if(shell.cameraActive)"CÂMERA: MÃOS" else "CÂMERA DESLIGADA"}";else->"MR INDISPONÍVEL • ESPAÇO SEGURO"}
-                shell.detail=if(frame?.active==true)"${feed?.name} • ${if(frame.tracking)"6DoF" else "3DoF"} • ${if(sample!=null)"mão detectada" else "olhar + toque"}" else experience.reason
+                shell.detail=if(frame?.active==true)"${feed?.name} • ${if(frame.tracking)"6DoF" else "3DoF"} • ${if(sample!=null){if(sample.confidence<.6f)"mão: aumente a iluminação" else "mão: abra e faça pinça"}else "mostre a mão aberta à câmera"}" else experience.reason
                 gpuMs=NativeBridge.gpuTime(handle)
                 advisedScale=if(prefs.getBoolean("neural",false))neural?.advise(stats.percentile(.5f),batch?.inferenceMs ?: 0f,thermal,battery/100f,q.renderScale) ?: q.renderScale else q.renderScale
                 if(appWindow!=null)shell.windows.windows.find{it.kind==WindowKind.ANDROID_APP}?.let{w->
@@ -291,8 +294,39 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
             NativeBridge.spatial(handle,shell.packet,shell.count,px,py,sample!=null)
             NativeBridge.camera(handle,textures[3],when(experience.active){Experience.MR->1;Experience.VR->2;else->0},frame?.projection,frame?.textureTransform)
             hover=NativeBridge.draw(handle,textures[0],textures[1],textures[2],transform,capturing,frame?.pose,(targetMs*1_000_000).toLong())
+            // Use THIS frame's hand ray/UV, never yesterday's gaze/touch hover.
+            NativeBridge.hitPoint(handle,hitUv)
+            val surfaceTarget=if(capturing)shell.surfaceKind?.let{8000+it.ordinal} ?: -1 else -1
+            val interactive=hover==8000+WindowKind.BROWSER.ordinal||hover==8000+WindowKind.ANDROID_APP.ordinal
+            handInput.update(sample,hover,hitUv[0],hitUv[1],interactive,surfaceTarget).forEach{command->
+                if(command.action==HandAction.SELECT)select()else dispatchHand(command)
+            }
+            if(sample!=null&&batch!=null&&batch.timestampNs!=lastHandNs){
+                lastHandNs=batch.timestampNs
+                batch.events.forEach{e->
+                    if(e.trackId==sample.trackId){
+                        when(e.kind){
+                            GestureKind.PINCH,GestureKind.PINCH_HOLD,GestureKind.PINCH_RELEASE->if(e.kind==GestureKind.PINCH_RELEASE)shell.gesture(e)
+                            GestureKind.SCROLL->if(handInput.captured<0&&hover==surfaceTarget){
+                                val browserTarget=browser;val appTarget=appWindow;val u=hitUv[0];val v=hitUv[1]
+                                if(shell.surfaceKind==WindowKind.BROWSER)runOnUiThread{browserTarget?.scroll(e.y)}
+                                else if(shell.surfaceKind==WindowKind.ANDROID_APP)runOnUiThread{appTarget?.pointer(8,u,v,-e.y*20)}
+                            }
+                            GestureKind.DRAG->if(handInput.captured<0&&handInput.pressed)shell.gesture(e)
+                            else->shell.gesture(e)
+                        }
+                    }else if(e.trackId==-1&&handInput.captured<0)shell.gesture(e)
+                }
+            }
             renderMs=(SystemClock.elapsedRealtimeNanos()-start)/1e6f
         }catch(e: Exception){fatal(e)}
+    }
+    private fun dispatchHand(command: HandCommand){
+        val action=when(command.action){HandAction.DOWN->MotionEvent.ACTION_DOWN;HandAction.MOVE->MotionEvent.ACTION_MOVE;HandAction.UP->MotionEvent.ACTION_UP;else->MotionEvent.ACTION_CANCEL}
+        // Capture the receiving object before posting: never redirect queued input into a new app.
+        val app=appWindow;val web=browser
+        if(command.target==8000+WindowKind.ANDROID_APP.ordinal)runOnUiThread{app?.pointer(action,command.u,command.v)}
+        else if(command.target==8000+WindowKind.BROWSER.ordinal)runOnUiThread{web?.pointer(action,command.u,command.v)}
     }
     private fun select(){
         if(handle==0L||!::shell.isInitialized)return
@@ -314,7 +348,7 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         fun action(s: String,enabled: Boolean=true,block: ()->Unit)=SpatialAction(s,enabled){try{block()}catch(e: Exception){notify(e.message ?: e.javaClass.simpleName,true)}}
         fun info(s: String)=SpatialAction(s,false){}
         fun main(block: ()->Unit){runOnUiThread{try{block()}catch(e: Exception){notify(e.message ?: "Ação indisponível",true)}}}
-        shell.pages[WindowKind.HOME]=listOf(action("Centralizar"){NativeBridge.recenter(handle);feed?.recenter();shell.windows.recenter()},action("Colocar objeto\nem plano real",cameraFrame?.tracking==true){notify(if(feed?.placeAtCenter()==true)"Âncora de sessão criada no plano" else "Aponte para um plano detectado")},action("Órbita • jogar"){scene=1;NativeBridge.scene(handle,scene);shell.windows.focus?.let{shell.windows.minimize(it)}},action("Reflexo • jogar"){scene=2;NativeBridge.scene(handle,scene)},action("Constelação"){scene=3;NativeBridge.scene(handle,scene)},action("Sair do jogo"){scene=0;score=0;NativeBridge.scene(handle,0)},action("Assistente local"){shell.windows.spawn(WindowKind.ASSISTANT)},info("Passthrough monocular\nUse sentado"))
+        shell.pages[WindowKind.HOME]=listOf(action("Centralizar"){NativeBridge.recenter(handle);feed?.recenter();shell.windows.recenter()},action("Colocar objeto\nem plano real",cameraFrame?.tracking==true){notify(if(feed?.placeAtCenter()==true)"Âncora de sessão criada no plano" else "Aponte para um plano detectado")},action("Órbita • jogar"){scene=1;NativeBridge.scene(handle,scene);shell.windows.focus?.let{shell.windows.minimize(it)}},action("Reflexo • jogar"){scene=2;NativeBridge.scene(handle,scene)},action("Constelação"){scene=3;NativeBridge.scene(handle,scene)},action("Sair do jogo"){scene=0;score=0;NativeBridge.scene(handle,0)},action("Assistente local"){shell.windows.spawn(WindowKind.ASSISTANT)},info("Mão aberta para apontar\nPinça: selecionar / arrastar"))
         val favorites=prefs.getStringSet("favorites",emptySet())!!.toSet()
         val recent=prefs.getString("recentOrdered","")!!.split('|')
         val pinned=prefs.getStringSet("pinnedApps",emptySet())!!.toSet()
@@ -342,7 +376,7 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         val answer=assistant.answer.chunked(80)
         shell.pages[WindowKind.ASSISTANT]=listOf(action(if(assistant.busy.get())"Processando localmente" else "Nova pergunta",!assistant.busy.get()){shell.keyboard{question->assistant.ask(question)}},action("Importar modelo",!assistant.busy.get()){main{importTarget="assistant";importDocument.launch(arrayOf("*/*"))}},action("Ler próxima parte"){assistantPage=if(assistantPage+1>=answer.size)0 else assistantPage+1;refreshPages()},info("${assistantPage+1}/${answer.size.coerceAtLeast(1)} • sem nuvem"))+answer.drop(assistantPage).take(4).map{info(it.chunked(22).joinToString("\n"))}
         shell.pages[WindowKind.ANDROID_APP]=listOf(action("Voltar"){main{appWindow?.back()}},action("Teclado"){shell.keyboard{value->main{appWindow?.text(value)}}},action("Curva / plana"){shell.curvedContent=!shell.curvedContent},action("Parar"){main{stopContent()};shell.surfaceKind=null})
-        shell.pages[WindowKind.CAPTURE]=listOf(action("Compartilhar um app"){main{stopContent();captureConsent.launch(getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent())}},action("Parar captura"){main{stopContent()};shell.surfaceKind=null},action("Conectar Shizuku"){main{shizuku.requestOrBind()}},info("${shizuku.status()}"),info("Compartilhamento: só visual\nJanela Shizuku: toque separado"),action("Abrir Shizuku"){main{val intent=packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api");if(intent!=null)startActivity(intent)else Catalog.openLink(this,"https://shizuku.rikka.app/")}},action("Depuração sem fio"){main{startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))}})
+        shell.pages[WindowKind.CAPTURE]=listOf(action("Compartilhar um app"){main{stopContent();captureConsent.launch(getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent())}},action("Parar captura"){main{stopContent()};shell.surfaceKind=null},action("Conectar Shizuku"){main{shizuku.requestOrBind()}},info("${shizuku.status()}"),info("Compartilhamento: só visual\nJanela Shizuku: pinça e arraste"),action("Abrir Shizuku"){main{val intent=packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api");if(intent!=null)startActivity(intent)else Catalog.openLink(this,"https://shizuku.rikka.app/")}},action("Depuração sem fio"){main{startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))}})
         shell.pages[WindowKind.TRACKING]=listOf(info(hands?.status ?: "Mãos desligadas"),action(if(prefs.getBoolean("hands",true))"Desligar mãos" else "Ligar mãos"){prefs.edit().putBoolean("hands",!prefs.getBoolean("hands",true)).apply();safeMode=false;stopCamera();startCamera()},info("Planos: ${cameraFrame?.planes ?: 0}\nÂncoras: ${cameraFrame?.anchors ?: 0}"),action(if(prefs.getBoolean("depth",false))"Desligar oclusão depth" else "Oclusão depth opcional",cameraFrame?.depthAvailable==true){prefs.edit().putBoolean("depth",!prefs.getBoolean("depth",false)).apply();stopCamera();startCamera()},action("Reconectar câmera"){cameraAllowed=true;preferCamera2=false;stopCamera();startCamera()},action(if(prefs.getBoolean("handsGpu",false))"Backend: GPU → CPU" else "Backend: CPU → GPU"){prefs.edit().putBoolean("handsGpu",!prefs.getBoolean("handsGpu",false)).apply();stopCamera();startCamera()},action(if(prefs.getBoolean("handOverlay",true))"Ocultar esqueleto" else "Mostrar esqueleto"){prefs.edit().putBoolean("handOverlay",!prefs.getBoolean("handOverlay",true)).apply()})
         val sample=hands?.latest?.get();val ram=ActivityManager.MemoryInfo().also{getSystemService(ActivityManager::class.java).getMemoryInfo(it)}
         shell.pages[WindowKind.DIAGNOSTICS]=listOf(info("p95 ${"%.1f".format(stats.percentile(.95f))} ms\n${"%.0f".format(1000/lastFrameMs.coerceAtLeast(1f))} callbacks/s"),info("CPU frame ${"%.1f".format(renderMs)} ms\nGPU ${if(gpuMs<0)"N/D" else "%.1f ms".format(gpuMs)}"),info("Inferência ${sample?.inferenceMs?.let{"%.1f".format(it)} ?: "—"} ms\nFiltro ${sample?.filterMs?.let{"%.1f".format(it)} ?: "—"} ms"),info("Térmico $thermal\nEscala ${"%.0f".format(quality.quality.renderScale*100)}%"),info("RAM livre ${ram.availMem/1048576} MiB\nE2E: requer medição externa"),info("${width}×$height\n${"%.0f".format(1000/targetMs)} Hz"),info("Frames de câmera pulados\n${hands?.dropped?.get() ?: 0}"),info("Pré ${sample?.preprocessMs?.let{"%.1f".format(it)} ?: "—"} ms\nChegada ${if(sample?.clockKnown==true)((sample.receivedNs-sample.sensorTimestampNs)/1e6).toInt().toString()+" ms" else "N/D"}"))
@@ -379,6 +413,7 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
     }
     /** Main-thread owner: a bound service must release projection even before onDestroy. */
     private fun stopContent(){
+        if(::view.isInitialized)view.queueEvent{handInput.cancel()}
         capturing=false;appWindow?.close();appWindow=null;browser?.close();browser=null
         captureService?.onStopped=null;captureService?.onResize=null;captureService?.stopCapture();captureService=null
         if(bound){unbindService(captureConnection);bound=false}

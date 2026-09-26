@@ -34,7 +34,7 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
     private val worker=Executors.newSingleThreadExecutor { r->Thread(r,"TrackMR-inference").apply{priority=4} }
     private var landmarker: HandLandmarker?=null
     private val association=HandAssociation()
-    private val temporal=Array(2){TemporalHandPipeline()}
+    private val temporal=Array(2){TemporalHandPipeline(trackId=it)}
     private val gestures=Array(2){GestureEngine()}
     private val lastSeen=LongArray(2)
     private val twoHands=TwoHandGestures()
@@ -105,7 +105,7 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
                 val slots=association.associate(observations)
                 val filtered=ArrayList<HandSample>(2);val events=ArrayList<GestureEvent>()
                 observations.forEachIndexed{i,o->val slot=slots[i];if(slot>=0){
-                    if(capture-lastSeen[slot]>180_000_000){temporal[slot].reset();gestures[slot].reset()}
+                    if(capture-lastSeen[slot]>350_000_000){temporal[slot].reset();gestures[slot].reset()}
                     lastSeen[slot]=capture
                     temporal[slot].update(o)?.let{s->filtered+=s;events+=gestures[slot].update(s)}
                 }}

@@ -9,7 +9,8 @@ import java.util.concurrent.TimeUnit
 class ShellBridgeService : IShellBridge.Stub() {
     override fun uid()=Process.myUid()
     private data class Size(val width: Int,val height: Int)
-    private fun owned(displayId: Int): Size {
+    private fun owned(displayId: Int,callerUid: Int=Binder.getCallingUid()): Size {
+        try {
         // Framework hidden API in shell, never in the unprivileged UI process.
         // OEM incompatibility fails closed instead of sending input to display 0.
         val global=Class.forName("android.hardware.display.DisplayManagerGlobal")
@@ -17,8 +18,57 @@ class ShellBridgeService : IShellBridge.Stub() {
         val info=global.getMethod("getDisplayInfo",Int::class.javaPrimitiveType).invoke(manager,displayId)
             ?: error("Display encerrado")
         fun field(name: String)=info.javaClass.getField(name).get(info)
-        check(OwnedDisplayPolicy.allowed(displayId,field("name") as String,field("ownerUid") as Int,Binder.getCallingUid(),field("ownerPackageName") as? String ?: "")){"Display não pertence ao TrackMR/chamador"}
+        check(OwnedDisplayPolicy.allowed(displayId,field("name") as String,field("ownerUid") as Int,callerUid,field("ownerPackageName") as? String ?: "")){"Display não pertence ao TrackMR/chamador"}
         return Size(field("logicalWidth") as Int,field("logicalHeight") as Int)
+        }catch(e: Exception){throw IllegalStateException("Display Shizuku: ${e.cause?.message ?: e.message}",e)}
+    }
+    private data class Contact(val display: Int,val owner: Int,val down: Long,var u: Float,var v: Float,var expires: Long)
+    private var contact: Contact?=null
+    private val timer=java.util.concurrent.ScheduledThreadPoolExecutor(1){r->Thread(r,"TrackMR-input-expiry").apply{isDaemon=true}}.apply{setRemoveOnCancelPolicy(true)}
+    private var expiry: java.util.concurrent.ScheduledFuture<*>?=null
+    private val inputClass by lazy{runCatching{Class.forName("android.hardware.input.InputManagerGlobal")}.getOrElse{Class.forName("android.hardware.input.InputManager")}}
+    private val inputManager by lazy{inputClass.getMethod("getInstance").invoke(null)}
+    private val injectMethod by lazy{inputClass.getMethod("injectInputEvent",android.view.InputEvent::class.java,Int::class.javaPrimitiveType)}
+    private val displayMethod by lazy{android.view.InputEvent::class.java.getMethod("setDisplayId",Int::class.javaPrimitiveType)}
+    private fun inject(display: Int,action: Int,u: Float,v: Float,scroll: Float,down: Long,size: Size): Boolean {
+        val now=android.os.SystemClock.uptimeMillis()
+        val properties=android.view.MotionEvent.PointerProperties().apply{id=0;toolType=if(action==8)android.view.MotionEvent.TOOL_TYPE_MOUSE else android.view.MotionEvent.TOOL_TYPE_FINGER}
+        val coords=android.view.MotionEvent.PointerCoords().apply{
+            x=u.coerceIn(0f,1f)*(size.width-1);y=v.coerceIn(0f,1f)*(size.height-1)
+            pressure=if(action==1||action==3)0f else 1f;this.size=1f
+            if(action==8)setAxisValue(android.view.MotionEvent.AXIS_VSCROLL,scroll.coerceIn(-3f,3f))
+        }
+        val source=if(action==8)android.view.InputDevice.SOURCE_MOUSE else android.view.InputDevice.SOURCE_TOUCHSCREEN
+        val event=android.view.MotionEvent.obtain(down,now,action,1,arrayOf(properties),arrayOf(coords),0,0,1f,1f,0,0,source,0)
+        try{displayMethod.invoke(event,display);return injectMethod.invoke(inputManager,event,0) as Boolean}
+        finally{event.recycle()}
+    }
+    private fun cancelContact(){
+        val c=contact;contact=null;expiry?.cancel(false);expiry=null
+        if(c!=null)runCatching{inject(c.display,3,c.u,c.v,0f,c.down,owned(c.display,c.owner))}
+    }
+    /** Fast Binder input: no `input tap/swipe` process for a hand frame. Never target display 0. */
+    @Synchronized override fun handPointer(displayId: Int,action: Int,u: Float,v: Float,scroll: Float): Boolean {
+        try{
+            require(action==0||action==1||action==2||action==3||action==8)
+            require(u.isFinite()&&v.isFinite()&&scroll.isFinite())
+            val size=owned(displayId)
+            val now=android.os.SystemClock.uptimeMillis()
+            if(action==3){if(contact?.display==displayId)cancelContact();return true}
+            if(action==8)return inject(displayId,action,u,v,scroll,now,size)
+            if(action==0){cancelContact();contact=Contact(displayId,Binder.getCallingUid(),now,u,v,now+800)}
+            val c=contact ?: return false
+            check(c.display==displayId&&c.owner==Binder.getCallingUid()){"Outro gesto já controla a entrada"}
+            if(!inject(displayId,action,u,v,0f,c.down,size)){cancelContact();return false}
+            c.u=u;c.v=v;c.expires=now+800
+            expiry?.cancel(false)
+            if(action==1){contact=null;expiry=null}else{
+                expiry=timer.schedule({synchronized(this@ShellBridgeService){
+                    if(contact===c&&android.os.SystemClock.uptimeMillis()>=c.expires)cancelContact()
+                }},800,TimeUnit.MILLISECONDS)
+            }
+            return true
+        }catch(e: Exception){cancelContact();throw IllegalStateException("Entrada de mão Shizuku: ${e.cause?.message ?: e.message}",e)}
     }
     override fun launchOnDisplay(component: String,displayId: Int): String {
         owned(displayId);require(OwnedDisplayPolicy.component(component))
@@ -52,5 +102,5 @@ class ShellBridgeService : IShellBridge.Stub() {
             return message
         }finally{output.delete()}
     }
-    override fun destroy(){Process.killProcess(Process.myPid())}
+    @Synchronized override fun destroy(){cancelContact();timer.shutdownNow();Process.killProcess(Process.myPid())}
 }
