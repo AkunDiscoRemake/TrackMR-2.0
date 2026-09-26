@@ -29,6 +29,8 @@ class AndroidAppWindow(private val context: Context,private val bridge: ShizukuB
         }}}}
         catch(_: java.util.concurrent.RejectedExecutionException){report("Entrada ocupada; aguarde o comando anterior",false)}
     }
+    // Intentionally uses AOSP destroy-on-removal flag, absent only from the public @IntDef.
+    @android.annotation.SuppressLint("WrongConstant")
     fun open(surface: Surface,component: ComponentName){
         check(bridge.shell!=null){"Conecte/autorize Shizuku primeiro em Captura"}
         check(display==null&&!closed)
