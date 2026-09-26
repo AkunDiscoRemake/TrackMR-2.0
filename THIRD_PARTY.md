@@ -10,7 +10,7 @@
 | [MediaPipe](https://github.com/google-ai-edge/mediapipe) | vision 0.10.21; genai 0.10.24 | HandLandmarker e LLM local | Apache-2.0 no código; revisar termos dos pesos separadamente. |
 | [ARCore Android SDK](https://github.com/google-ar/arcore-android-sdk) | 1.48.0 | Posição/orientação e imagem de câmera | SDK/serviços Google têm termos próprios; não classificar o runtime ARCore como engine totalmente open source. |
 | [Shizuku API](https://github.com/RikkaApps/Shizuku-API) | 13.1.5 | Permissão e user service AIDL | Apache-2.0; exige app/serviço Shizuku separado. |
-| [OpenXR SDK / Loader](https://github.com/KhronosGroup/OpenXR-SDK-Source) | 1.1.36 | Sondagem no segundo APK | Licenciamento upstream Apache-2.0/MIT conforme arquivo; não implica certificação. |
+| [OpenXR SDK / Loader](https://github.com/KhronosGroup/OpenXR-SDK-Source) | 1.1.36 | Loader usado pela sondagem e pelo cliente de sessão GLES :openxr | Licenciamento upstream Apache-2.0/MIT conforme arquivo; não implica certificação. |
 | [TensorFlow Lite](https://github.com/tensorflow/tensorflow) | 2.16.1 | Consultor neural opcional | Apache-2.0 no código; nenhum peso de policy incluído. |
 | [AndroidX](https://android.googlesource.com/platform/frameworks/support/) | Core 1.15.0, Activity 1.9.3, AppCompat 1.7.0 | Activity/permissões/SDK Cardboard | Apache-2.0; dependências transitivas resolvidas pelo Gradle. |
 | [Material Components Android](https://github.com/material-components/material-components-android) | 1.12.0 | UI do leitor QR upstream | Apache-2.0. |
@@ -46,7 +46,7 @@ O modelo HandLandmarker versão 1 é buscado do [bucket oficial MediaPipe](https
 | [KTX-Software](https://github.com/KhronosGroup/KTX-Software) | Texturas GPU/KTX2 | Pipeline futuro; conferir suporte por GPU |
 | [Basis Universal](https://github.com/BinomialLLC/basis_universal) | Compressão/transcoding | Alternativa para reduzir memória e download |
 | [libyuv](https://chromium.googlesource.com/libyuv/libyuv/) | YUV/SIMD | Substituir conversão Kotlin somente após benchmark |
-| [Oboe](https://github.com/google/oboe) | Áudio de baixa latência | Ainda sem subsistema de áudio nativo nesta alpha |
+| [Oboe](https://github.com/google/oboe) | Áudio de baixa latência | Candidato; alpha usa SoundPool para sons UI, não Oboe |
 | [Resonance Audio](https://github.com/resonance-audio/resonance-audio) | Áudio espacial | Avaliar manutenção/compatibilidade antes de integrar |
 | [Perfetto](https://android.googlesource.com/platform/external/perfetto/) | Profiling de CPU/GPU/frames | Ferramenta de medição, não biblioteca de app |
 | [Android Games SDK](https://android.googlesource.com/platform/frameworks/opt/gamesdk/) | Swappy/ADPF | Pacing e performance hints futuros |
@@ -61,6 +61,11 @@ Antes de adotar qualquer candidato, fixe revisão, leia LICENSE/NOTICE daquela r
 ## Recursos visuais e código novo
 
 - Os três PNGs da raiz vieram do commit inicial `66e28b7`. Autor/licença das imagens não foram declarados no repositório. Foram preservados; os JPEGs/ícone em `app/src/main` são derivados para empacotamento. **A licença Apache do código não concede direitos sobre essas imagens**. Confirmar direitos antes de distribuição pública/comercial.
+- `app/src/main/res/raw/xr_select.wav` e `xr_notice.wav`: tons sintetizados originalmente nesta implementação, sem samples de terceiros; Apache-2.0. Não foram extraídos de headsets comerciais.
 - Orbes/materiais procedurais, UI e código novo desta implementação: Apache-2.0, sem recursos extraídos do Quest/Meta.
 - Cardboard, ARCore, Android, OpenXR, Meta, Quest e demais nomes são marcas de seus titulares. Projeto independente, sem afiliação ou certificação implícita.
 - O build integra o SDK Cardboard com seus avisos. Antes de release público, gerar SBOM/relatório das licenças de **todas** as dependências resolvidas e incluir avisos obrigatórios no app. Esta tabela é um inventário humano inicial, não uma auditoria jurídica completa.
+
+## Pesquisa atualizada
+
+Snapshot de 13 repositórios via GitHub API em 2026-09-26 e decisões de licença/Android/ARM64/manutenção/dependências: [docs/research/DECISIONS.md](docs/research/DECISIONS.md). Metadados de atividade não comprovam qualidade/latência/suporte ao telefone; candidatos não foram incluídos automaticamente. ORB-SLAM3/OpenVINS GPL-3.0 não foram incorporados.

@@ -1,59 +1,60 @@
-# Latência, mãos e desempenho
+# Desempenho e medições · alpha02
 
-## O que está implementado
+**Sem benchmark em aparelho nesta entrega.** Metas de latência/FPS/potência não são resultados. Shader/teste/build verde não mede uso real de GPU, bateria ou conforto.
 
-- Pose Cardboard buscada **depois** da preparação de texturas/ARCore, perto do draw.
-- Timestamp de previsão em `CLOCK_BOOTTIME`, o domínio exigido pelo SDK; horizonte limitado a 30 ms. Usa o período do display como estimativa — ainda não usa apresentação real do SurfaceFlinger.
-- FBO com escala 0,60–1,00, recalculado somente ao mudar tamanho/escala/perfil.
-- Shaders sem ray marching: uma consulta panorâmica, uma interseção de painel ou seis interseções esfera-raio. Materiais procedurais dos jogos.
-- Sem decodificar panoramas/painel por frame; sem screenshot CPU na captura de apps.
-- ARCore em `LATEST_CAMERA_IMAGE`, sem planos, profundidade ou iluminação quando não necessários.
-- MediaPipe VIDEO, GPU primeiro / CPU como fallback, 1 mão para limitar custo. Inicialização GPU ocorre no mesmo worker da inferência.
-- Câmera YUV → bitmap reutilizado com largura máxima 384; sem compressão JPEG. Medir se SIMD/libyuv supera este caminho Kotlin antes de integrar.
-- Backpressure de capacidade 1 e descarte implícito antes de adquirir a imagem, em vez de fila de atraso crescente.
-- One Euro adaptativo; Kalman de velocidade constante alternativo no módulo core. **Não se empilham ambos por padrão**: mais filtros podem aumentar atraso.
-- Rejeição de timestamps repetidos/regressivos, NaN/Inf, reset após lacuna de 250 ms, limite de saltos; histerese e debounce de pinça relativos à largura da palma.
-- Snapshot deixa de ser desenhado após 150 ms. Não há predição de mão além do frame nesta alpha: é preferível assumir o atraso a extrapolar mão errada.
-- Estatísticas p50/p95 em janela de 240 frames; sorting só no diagnóstico de 1 Hz.
-- Política com EMA e ajuste a cada 120 frames para reduzir oscilações; throttling adicional por temperatura. Sob status térmico severo a segurança continua ativa mesmo com ajuste automático desligado.
+## Implementação atual
 
-## Rede neural: experimental, sem marketing de ganho
+- GLSurfaceView com render independente do worker de mãos; framebuffer Cardboard adaptativo, sem alterar ótica física.
+- ARCore `LATEST_CAMERA_IMAGE`; Camera2 fallback. Fonte única compartilhada com inferência, não duas câmeras concorrentes.
+- MediaPipe VIDEO, até duas mãos, GPU → CPU; inicialização/inferência/close no mesmo worker. Uma reserva em voo, sem fila crescente.
+- YUV downsample em bitmap/array reutilizado; largura/cadência adaptadas (192–512), não aumentar resolução como substituto de filtro/calibração.
+- Associação de pulsos e handedness como desempate; handedness não é probabilidade de cada joint. One Euro/Kalman/EMA/RAW no domínio, guard de median/outlier e reset temporal. Não empilhar filtros pesados por padrão.
+- Amostras >150 ms não controlam o ponteiro. Previsão do ponteiro limitada a 18 ms, nunca usada para decidir gestos.
+- Dock/janelas instanciados em lote; atlas limitado, upload de tiles só quando mudam. Não há promessa de zero alocações: layout, snapshots, filtros e AR queries ainda geram trabalho/alocações.
+- Depth opt-in; aquisição/upload limitado em cadência, buffer reaproveitado quando dimensões não mudam. Sem depth em aparelhos sem suporte.
+- GPU elapsed: quatro queries EXT, resultado só se disponível, sem espera bloqueante. Unsupported/disjoint = **N/D**, nunca zero inventado; queries afetadas por disjoint são invalidadas.
+- Qualidade depende de histórico/cadência, bateria e térmica; limita mãos em calor severo e desliga câmera em crítico. Religar exige ação explícita. Não há guardian térmico certificado.
+- Browser/captura são mutuamente exclusivos; encerrados no background/fechamento/minimização. LLM separado pode competir por GPU/RAM; não há evidência de ganho ao executá-lo junto com MR.
 
-O app aceita um TFLite de até 1 MiB com entrada `[1,5]` e saída `[1,2]`. O modelo **não está incluído**. `scripts/train_performance.py` treina um pequeno MLP com dados rotulados de sessões reais. Não há ganho comprovado; uma rede pequena ainda adiciona custo.
+## O que cada número significa
 
-Contrato float32:
+| Métrica | Significado / exclusões |
+|---|---|
+| Callbacks/s e p95 | Intervalo entre callbacks GL, não frames efetivamente apresentados pelo SurfaceFlinger |
+| CPU frame | Tempo decorrido dentro de `onDrawFrame`, incluindo chamadas feitas ali; não CPU exclusivo do processo |
+| GPU | Query do trabalho de render no contexto GLES, se disponível; não display scanout/motion-to-photon |
+| Pré-processamento | Conversão/downsample da imagem antes da inferência |
+| Inferência | Chamada MediaPipe, sem confundir com toda a cadeia câmera→display |
+| Filtro | Pós-processamento temporal/gestos do snapshot |
+| Chegada da câmera | Só quando clock sensor REALTIME é conhecido; origem desconhecida → N/D |
+| Timestamp ARCore da UI | Idade local desde aquisição de um frame novo; não é latência física de captura |
+| Depth freshness | Idade local desde imagem depth com timestamp novo; validação temporal/calibração em dispositivo pendentes |
+| RAM | Memória livre do sistema, não heap/RSS exclusivo do app |
+| E2E/display | Não medidos; dependem de instrumentação externa/FrameTimeline |
+
+Camera2 REALTIME e relógios do sistema devem ser conferidos no aparelho; `Frame.timestamp` do ARCore não é presumido comparável ao relógio do sistema. Números fora de domínio ou inválidos não podem virar latência negativa/zero falsa.
+
+## Policy neural opcional
+
+Sem pesos incluídos ou ganho comprovado. Importação até 1 MiB, entrada/saída float32 com shapes `[1,5]`/`[1,2]`; opt-in nos ajustes avançados. Determinística/térmica sempre prevalece.
 
 ```
 input = [frame_ms / 33.3, hand_ms / 50, thermal / 6, battery_0_to_1, current_scale]
 output = [suggested_scale, hand_interval_ms / 100]
 ```
 
-A segunda saída é reservada, não controla cadência nesta alpha. A escala neural nunca ultrapassa a permitida pelo controlador determinístico e nunca cai abaixo de 0,60. Inferência ≤ 1 Hz, 1 thread, fallback em ausência/erro. Um modelo com shape inválido não é carregado.
+A segunda saída está reservada. Escala limitada a `[0.60, baseline]`, execução ≤1 Hz, uma thread. Ainda executa no GL: medir custo e migrar para worker se demonstrar gargalo. Modelos inválidos não devem derrubar o renderer.
 
-Para produzir dados úteis, faça varreduras controladas de escala/cadência, meça tempo de GPU, térmica, jitter e atraso sob a mesma carga, e rotule a melhor combinação segura. Separe treino/validação por **aparelho e sessão**, não frames adjacentes. Não use dados sintéticos para anunciar ganho real. Não usar NN para "aumentar FPS" falsificando estatísticas ou reduzindo tracking silenciosamente.
+`scripts/train_performance.py` é ferramenta separada, não treino no app. Use dados reais, splits por **aparelho/sessão**, compare com controlador sem NN e não anuncie ganho a partir de dataset sintético.
 
-```sh
-# Ambiente de treino separado, TensorFlow não faz parte do build Android.
-python -m venv .venv
-. .venv/bin/activate
-pip install tensorflow==2.16.1 numpy
-python scripts/train_performance.py session-train.csv session-validation.csv performance.tflite
-# Importe o arquivo pelos Ajustes; habilite o consultor experimental.
-```
+## Protocolo físico necessário
 
-## Como medir
+1. Baseline VR sem câmera; Camera2 MR; ARCore; mãos CPU/GPU; depth; browser/captura; IA separada e combinada.
+2. Mesma cena, temperatura inicial, bateria, lentes, Android e Hz; sessões de 10–20 minutos, pelo menos três SoCs.
+3. Perfetto/FrameTimeline/SurfaceFlinger: p50/p95/p99, scheduling, missed frames, CPU/GPU, frequências e RSS/GC.
+4. Tracking: jitter parado, erro de movimento, reacquisição/oclusão/cruzamento, luz/framerate, idade de amostra e erros de gesto.
+5. Potência/corrente e temperatura, não somente indicador térmico; comparar modos de qualidade.
+6. Motion-to-photon e câmera→overlay com alta velocidade/fotodiodo; relógio do app sozinho não basta.
+7. Documentar modelo, build, revisão, visor e configuração junto com cada resultado.
 
-O número `frame p95` na UI é intervalo entre callbacks do GL. **Não mede CPU exclusivo, GPU nem motion-to-photon.** InferenceMs começa depois da conversão YUV; não é latência completa da mão. Timestamp da câmera e `elapsedRealtimeNanos` precisam ter compatibilidade confirmada por OEM; frames fora da janela temporal são descartados.
-
-Medições necessárias em hardware:
-
-1. Perfetto: scheduling, CPU/GPU, frequência, SurfaceFlinger, FrameTimeline e gargalos de memória.
-2. Baseline sem ARCore/mãos; depois 6DoF, mãos CPU/GPU, captura e cada combinação.
-3. P50/p95/p99, frames perdidos, idade da amostra, jitter em mão imóvel, erro durante movimento rápido, corrente e status térmico em sessões de 10–20 minutos.
-4. Motion-to-photon com câmera externa de alta velocidade/fotodiodo, não com `System.nanoTime` sozinho.
-5. Testar 60/90/120 Hz, pouca luz, oclusão, troca de mão, retorno de background e bateria baixa.
-6. Comparar bruto / One Euro / Kalman. Escolher parâmetros pelo compromisso entre atraso e jitter, não por quantidade de filtros.
-
-## Próximas otimizações dependentes de medição
-
-Choreographer/Swappy, GPU timestamps, late latching real, calibração intrínseca mãos/câmera, uso direto de buffers GPU quando suportado, libyuv/NEON, dupla mão com associação estável, ROI temporal explicitamente controlável, watchdog térmico de sessão, telemetria **local e opt-in**, dataset de política neural. Não há timewarp assíncrono próprio nem foveated rendering nesta alpha.
+Pendente: AHardwareBuffer/zero-copy de inferência, pacing Swappy/ADPF, Vulkan, foveation, timewarp/late latching próprio, calibração métrica câmera/olhos/mãos, ROI controlável, benchmark de NEON/libyuv e SLAM custom. Nenhuma dessas otimizações é declarada implementada só por haver biblioteca candidata.

@@ -3,6 +3,10 @@
 ## Automatizada
 
 - `:core:test`: One Euro em repouso/ruído/gap, timestamps repetidos, Kalman em velocidade constante, descarte NaN, pinça/histerese, política térmica, percentis, mesh curva/plana.
+- `:xr:test`: MR-first/fallback, dock hover, janelas/pins/limites, restauração e maximize reversível, relógios, térmica, notificações/recovery, orçamento de atlas/packet com teclado.
+- `:handtracking:test`: filtros, spikes/timestamps, associação e gestos/histerese/conflitos/previsão, conforme casos em `handtracking/src/test`.
+- `tests/openxr_protocol_test.cpp`: ordem de frame, zero layers, dois olhos, sequências inválidas e abort. É checker de protocolo, não mock de runtime/conformidade.
+- `scripts/check_shaders.py`: extração, compilação e link dos shaders ESSL app/spatial/OpenXR com glslangValidator.
 - `tests/native_math_test.cpp`: inversão, translação/quaternion, raios de painel e esfera, rejeição de interseções atrás/fora.
 - Android assemble + lint em CI. CMake compila Cardboard e renderer contra NDK real; runtime liga loader OpenXR real.
 - APKs verificadas com `apksigner`; checksums publicadas junto.
@@ -13,21 +17,35 @@
 
 | Área | Casos | Critério |
 |---|---|---|
-| Instalação | Android 10/12/14/15+, arm64; páginas 4/16 KiB; sem ARCore | Home abre sem pedir permissões desnecessárias |
+| Instalação | Android 10/12/14/15+, arm64; páginas 4/16 KiB; sem ARCore | Abre superfície XR, solicita câmera para MR; recusa mostra fallback espacial explícito |
 | Cardboard | QR salvo/ausente/inválido; dois perfis | Projeção/distorção corretas, escala não altera ótica |
 | Orientação | Yaw/pitch/roll, recenter, retorno de QR | Mundo estável sem eixo invertido; sem NaN |
 | 360° | Dois ambientes, costura/polos | Imagens certas, foto sem parallax artificial |
 | EGL | Home, bloqueio, rotação, pressão de memória | Recupera render; captura perdida é encerrada com segurança |
 | Jogos | Volume+, botão A, toque; erro na sequência | Pontos respondem e Menu retorna |
 | ARCore | Instalação, recusa de câmera, sem suporte, pouca luz | Fallback 3DoF e estado claro, sem crash |
-| Mãos | CPU/GPU, oclusão, mão esquerda/direita, timestamps | Sem fila, sem esqueleto velho >150ms; nenhum gesto após perda |
+| Mãos | CPU/GPU, oclusão, mão esquerda/direita, timestamps | Sem fila, sem ponteiro velho >150ms; nenhum gesto após perda |
 | Captura | Recusa, um app, tela inteira, resize, sistema encerra | Notificação, stop, correto aspect; sem reutilizar consentimento |
 | Proteção | FLAG_SECURE/DRM | Continua protegido; nunca tentar contornar |
 | Shizuku | Ausente, negado, autorizado, morte do binder | Erro útil, sem promoção silenciosa ou comandos no display 0 |
 | IA | Sem modelo, incompatível, sem espaço, RAM insuficiente, Activity fecha | Sem nuvem; erro claro; close ordenado |
 | Térmica | Status alto, alternância rápida de carga | Escala/cadência limitadas, sem oscilação a cada frame |
-| OpenXR | Sem Broker, sem runtime, Monado escolhido, ABI errada | Status real; não registrar runtime falso |
+| OpenXR | Sem Broker/runtime, ABI incorreta, runtime selecionado, READY/STOPPING/EXITING/LOSS, swapchain/hand failures | Erro real, frames/cleanup corretos, sem runtime falso; shell suspenso durante sessão |
+| Browser | HTTPS inválido/redirect, toque/scroll/teclado, sem WebView, EGL/background | Sem crash/fonte órfã; câmera/mic/download negados; não anunciar WebXR |
+| Depth | Sem suporte, imagens repetidas/atrasadas, UV/orientação, perto/longe | Opcional; sem oclusão fantasma; mapa correto validado fisicamente |
+| Janelas | 5 abertas, pins mistos, teclado, hover rápido, maximize 100 vezes | Não exceder atlas/packet; fechar/minimizar fonte ativa encerra transporte |
+| Screenshot | Sem Surface, confirmação expira, IO falha, fechar Activity durante PixelCopy | Sem foto antes da confirmação; sem item pendente/buffer vazado |
+| Privacidade | Background/desligar câmera/retorno; fechar browser/capture; stop do sistema | Indicadores e fontes coerentes, projeção para mesmo enquanto serviço bound |
 
 ## Critérios de maturidade antes de release
 
 Pelo menos três aparelhos de SoCs diferentes; sessões de 20 minutos; Perfetto; conforto ótico; teste de leitura/tamanho de UI dentro das lentes; auditoria de ciclo de vida/permissões; comparação de filtros com dados reais; política neural validada em aparelhos não usados no treino; scan de dependências/licenças; assinatura release e atualizações de segurança. Relatar modelo do aparelho, Android, visor/perfil, frequência, temperatura e revisão do código em cada resultado.
+
+## Evidência de CI já obtida
+
+- MR-first: `7c8177e`, Actions `36275949354`, aprovado.
+- Cliente OpenXR/shaders/protocolo: `7b738e2`, Actions `36276368463`, aprovado.
+- Browser/IA/depth/diagnósticos: `fe3070c`, Actions `36276988561`, aprovado (job 4m15s).
+- Correções de lifecycle/depth/budgets: `7324be1`, Actions `36277281705`, aprovado (job 4m07s); [artefatos e proveniência](DELIVERY-alpha02.md).
+
+Correções posteriores exigem o resultado da própria revisão no Actions. Estes registros não são resultados de teste de câmera/HMD, potência ou latência física.

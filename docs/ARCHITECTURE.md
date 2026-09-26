@@ -1,68 +1,68 @@
-# Arquitetura
+# Arquitetura · MR-first alpha02
 
 ```
-:app (APK dev.trackmr)
- ├─ UI Android → preferências / catálogo / consentimento / IA local
- ├─ GLSurfaceView → JNI → :cardboard (Google SDK)
- │                   ├─ head tracker → pose prevista → matrizes por olho
- │                   ├─ panorama + painel/captura + jogos → framebuffer estéreo
- │                   └─ distortion mesh → tela física
- ├─ ARCore Session (único dono da câmera)
- │    ├─ pose opcional de objetos 6DoF
- │    └─ acquireCameraImage → reserva atômica → worker MediaPipe
- │                  → YUV downsample → inferência → filtro → snapshot → GL
- ├─ MediaProjection + foreground service → SurfaceTexture OES → painel
- ├─ Shizuku → user service AIDL shell (separado da captura)
- └─ política de performance → escala / cadência de mãos
+:app → VrActivity (launcher é GLSurfaceView; sem MainActivity 2D)
+ ├─ dock/SpatialShell → packet de objetos 3D + atlas de glifos/ícones
+ │    └─ JNI → renderer GLES → API Cardboard → distorção/display
+ ├─ camera/CameraFeed → ARCore OU Camera2 (um dono por sessão)
+ │    └─ CameraConsumer → tracking/HandTracker (worker MediaPipe)
+ │         └─ :handtracking (associação/filtros/gestos) → snapshot → GL
+ ├─ browser/SpatialBrowser → WebView/Presentation em display privado
+ ├─ platform/CaptureService → MediaProjection autorizado
+ │    └─ browser OU capture → SurfaceTexture OES → janela espacial
+ ├─ ai/LocalAssistant → worker MediaPipe LLM → texto espacial
+ ├─ audio/SpatialAudio → SoundPool (pan estéreo, não HRTF)
+ ├─ diagnostics/SpatialScreenshot → PixelCopy consentido → MediaStore
+ ├─ platform/ShizukuBridge → user service shell com AIDL restrito
+ └─ :openxr/SessionActivity (opcional; pausa Cardboard/câmera)
+      └─ JNI session.cpp → loader oficial → runtime externo
 
-:core (JVM)       filtros, pinça, geometria, histerese, estatística
-:dev-api (JVM)    contratos de jogos e exemplo; host externo ainda pendente
-:runtime (APK)   Broker ContentProvider → loader OpenXR → teste de instância
+:core          JVM: matemática/filtros/política/estatística reutilizados
+:xr            JVM: experiência, janelas/dock, qualidade/relógios/recovery
+:handtracking  JVM: contratos, associação temporal, filtros, gestos
+:openxr        Android/C++: cliente de sessão, independente de UI/loja/MediaPipe
+:runtime       APK companion: Broker, sondagem e acesso ao cliente :openxr
+:dev-api       JVM: contratos v1 e exemplo; host de plugins ainda não implementado
+render/include/trackmr/math.hpp → matemática comum aos renderers nativos
 ```
 
-## Cardboard
+Os diretórios `camera`, `browser`, `ai`, `audio`, `diagnostics`, `dock`, `tracking`, `store`, `platform` isolam responsabilidades dentro do app. Não existem implementações completas de SLAM próprio, network/download manager, marketplace, malha de sala ou runtime Monado ocultas atrás desses nomes. ARCore é o provedor atual de SLAM/planos/âncoras quando disponível.
 
-O bootstrap fixa `googlevr/cardboard` em `6eea12f99ba825086838554d7702217d780282be` (v1.30.0). O módulo `:cardboard` compila o Java/protobuf do SDK. O CMake do app compila as fontes nativas **desse mesmo checkout**, sem AAR baixado de origem desconhecida, sem plugin Unity/Vulkan.
+## Renderização e espaços
 
-A API fornece projeção por olho, eye-from-head e malha de distorção. O renderer inverte as matrizes para construir raios por pixel e escreve cada olho no framebuffer. A API de distorção do Cardboard faz a composição final. Alterar a escala do framebuffer não altera o tamanho físico do display usado pelo cálculo das lentes. Há checagem de completude do framebuffer e logs de falha de shader.
+- API Cardboard oficial fixada no bootstrap: projeção/eye-from-head e malha de distorção; nada de substituir por divisão simples da tela. A escala do framebuffer não altera dimensões físicas usadas nas lentes.
+- Objetos em metros, +X direita/+Y acima/-Z frente. ARCore `displayOrientedPose` é relativa à posição/yaw inicial, mantendo gravidade. Não há fusão Cardboard/ARCore: transição/relocalização ainda precisa de validação de conforto.
+- Camera2 fornece imagem mono e orientação Cardboard; **não fornece posição/SLAM**. Intrínsecos/rotação/FOV aproximados precisam de calibração física por aparelho.
+- MR usa imagem real em OES. Falta/perda de imagem troca para espaço neutro; panorama só no modo VR selecionado pelo usuário.
+- Mãos MediaPipe: imagem → viewport, 21 landmarks e profundidade relativa. Não se desenha esqueleto normalizado como se fosse uma mão 3D métrica. Índice controla ponteiro; gestos usam amostras filtradas, sem previsão.
+- Depth opcional: buffer depth16 em R16UI, UV de IMAGE_NORMALIZED separado do UV OES, descartado se velho. Compara profundidade axial com objetos procedurais. Não cobre UI/mãos, não reconstrói ambiente e não resolve sozinho offset câmera/olhos.
+- Janelas são objetos/controles espaciais independentes. Até cinco, packet de 160 itens, atlas de 128 tiles. Teclado e fades têm orçamento testado. Layout salvo é relativo à sessão, não mapa persistente.
+- Navegador/captura são conteúdos 2D em uma superfície da janela; o dock e seus controles não são screenshot de launcher Android. O path atual de janelas é plano, com yaw; o antigo parâmetro de curvatura não constitui suporte completo a janelas curvas.
 
-O SDK é inicializado uma vez por processo com um Context associado ao display, sem reter uma Activity; o QR é aberto em nova task a partir desse Context.
+## Threads e ownership
 
-Sem QR salvo, usa parâmetros oficiais Cardboard V1; isso é fallback, não calibração universal. QR é lido pela Activity oficial do SDK, com autorização de câmera.
-
-## Coordenadas e limites
-
-- Objetos: metros, mão direita, +X direita, +Y acima, -Z frente.
-- ARCore usa `displayOrientedPose`, relativa à posição e ao yaw da primeira pose após inicialização/recenter (preserva gravidade/pitch/roll). Não existe fusão de orientação Cardboard/ARCore: quando ARCore está tracking, usa-se sua pose completa; na perda, há fallback. Transição/relocalização pode produzir salto e precisa ser melhorada.
-- Panorama: amostra direção somente, ignorando a posição. Uma fotografia 360° não ganha profundidade com ARCore.
-- Mãos: coordenadas normalizadas da imagem convertidas para a viewport, com profundidade relativa do MediaPipe **não usada como metros**. Linhas de 1 pixel por olho são visualização/diagnóstico 2D; calibração intrínseca, oclusão, posição métrica e disparidade precisam de outra etapa.
-- Painel: interseção analítica com plano z=-2 ou cilindro de raio 2 m; CPU e shader usam o mesmo mapeamento UV. Resize mantém altura e adapta largura, limitada para conforto. Aspectos extremos podem ser comprimidos nesta alpha.
-
-## Threads e propriedade
-
-| Recurso | Dono |
+| Dono | Recursos |
 |---|---|
-| UI, permissões, bind de serviços | Main looper |
-| EGL, renderizador, texturas, update do ARCore | GL thread |
-| MediaPipe GPU/CPU + filtros | Um worker, inicialização/inferência/close na mesma thread |
-| LLM | Worker separado na Activity de chat; sem execução no loop VR |
-| Shizuku shell | Processo user service `:windows`, comandos AIDL restritos |
+| Main looper | Activity, permissões/pickers, browser/WebView, Surface de VirtualDisplay, bindings/captura |
+| GL thread | EGL/Cardboard, texturas, frame ARCore, packet, decisões de interação, NN opcional ≤1 Hz |
+| Worker MediaPipe | Inicialização, inferência e fechamento do backend de mãos |
+| Camera2 HandlerThread | Callbacks de câmera/ImageReader; reserva antes de enviar imagem |
+| Worker LLM | Importação limitada e inferência textual, fechamento após trabalho em voo |
+| Worker IO | Panoramas, screenshot, importação/verificação neural |
+| Worker OpenXR | Todas as chamadas da sessão e renderização dedicada; stop atômico |
 
-A reserva de hand tracking é adquirida antes da aquisição de imagem. Se há trabalho em voo, não se adquire novo frame. O bitmap e o array de conversão são reutilizados. Publica-se um pequeno array imutável por resultado; não se alega zero alocações. Imagens e MPImage são fechados, inclusive no caminho de erro. Landmarks velhos (>150 ms) não são desenhados.
+Mãos têm backpressure de capacidade um. Imagem/MPImage são fechadas no caminho normal/erro. Bitmap/conversão reutilizados; snapshots/publicação/filtros ainda alocam. Não há alegação de zero-copy/zero-GC.
 
-`GLSurfaceView.onPause()` suspende o loop antes de pausar ARCore. SurfaceTexture é atualizada apenas no GL thread. Se o contexto EGL é perdido durante captura, a captura é interrompida: o token de consentimento não é reutilizado ilegalmente.
+`onPause` desliga fonte browser/capture e pausa câmera; drena inferência antes de fechar leitor/sessão. Serviço de captura libera projeção explicitamente mesmo enquanto vinculado. Uma autorização de MediaProjection cria no máximo um display; nova captura exige novo consentimento. Perda de EGL encerra conteúdo antes de liberar a Surface antiga.
 
-## Apps Android
+LLM síncrono não é cancelável instantaneamente: close é enfileirado depois da inferência. NN de qualidade pode bloquear o GL por até o custo da inferência/importação; é experimental, desabilitada por padrão e deve ser medida antes de uso contínuo.
 
-Há **dois caminhos diferentes**, não intercambiáveis:
+## Apps e segurança
 
-1. **Implementado:** MediaProjection pede consentimento visível; no Android 14+ pode capturar um app. Serviço foreground mantém notificação e botão Parar. Frames vão a uma Surface GPU e são amostrados no painel. Resize usa `onCapturedContentResize`. Nenhuma injeção de toque.
-2. **Parcial:** Shizuku pede sua própria permissão e oferece um serviço shell com `am start --display` e `wm size -d` somente em display não primário. Falta criar/gerenciar displays privados compatíveis com cada Android, transporte Surface e entrada por display. Não há promessa de que `wm size` seja respeitado por todos os apps/OEMs.
+1. MediaProjection: autorizado, notificação/parar, um app no Android 14+ quando escolhido; não injeta toque. Browser e captura não coexistem na única Surface de conteúdo.
+2. Shizuku: autorização separada; comandos restritos `am start --display`/`wm size -d` em display não primário. Criar/gerenciar displays e entrada isolada ainda falta. Não promete suporte por todos os OEMs.
+3. Biblioteca: lançar abre Activity Android externa ao VR; recentes/favoritos são locais; detalhes/remoção usam o sistema.
+4. Browser: HTTPS, sem acesso file/content ou bridge JS, download bloqueado e câmera/mic negados por padrão. JavaScript do site é habilitado; inserção textual manual usa JSON quoting no campo DOM focado.
+5. IA: modelo local escolhido pelo usuário. Modelos são entrada de bibliotecas nativas e devem vir de fonte confiável. Nenhum peso é redistribuído sem licença.
 
-Lançar um app pelo catálogo de apps instalados abre a Activity **fora do VR**. A UI explicita isso. Não se contorna `FLAG_SECURE`, DRM ou diálogos protegidos.
-
-## Limites de segurança
-
-Sem servidor remoto, analytics, autenticação, shell arbitrário, instalação silenciosa ou modelo baixado automaticamente. URI de catálogo é HTTPS. O AIDL é exposto pelo protocolo autenticado do Shizuku, não por um service exportado do launcher. AIDL valida componentes, display e dimensões e não passa strings ao interpretador de shell.
-
-Modelos neurais importados devem ser de fonte confiável. Um modelo é dado consumido por bibliotecas nativas; isso também tem superfície de ataque. Não distribua modelos sem revisar licença, checksum e compatibilidade.
+Sem shell arbitrário, instalação silenciosa, impersonação do Broker, analytics ou upload automático de câmera. Notificações locais não equivalem a ler notificações privadas de outros apps.

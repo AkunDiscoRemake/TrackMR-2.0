@@ -1,33 +1,34 @@
-# Roadmap honesto
+# Escopo entregue e pendências
 
-## Alpha atual
+A alpha02 transforma o projeto em MR-first com dock/janelas espaciais e preserva Cardboard, conteúdo e integrações úteis. **Não conclui os 147 extras nem todos os sistemas de um OS XR.** A matriz do README descreve o que existe; teste automatizado não equivale a validação física.
 
-Shell Cardboard real; ambientes existentes; controles por olhar+gatilho; três minijogos procedurais; ARCore opcional; caminho MediaPipe com backpressure e filtros; captura em painel; autorização/serviço Shizuku; chat local com modelo importado; governor térmico; consultor neural opcional; contratos Dev API; diagnóstico de Broker/OpenXR; build de dois APKs no Actions.
+## P0 — bloquear afirmações de maturidade até validar
 
-## P0 — validar antes de expandir
+- Aparelhos físicos, perfis Cardboard, câmera/FOV/crop/rotação, hand mapping, depth UV e offset câmera/olhos.
+- Latência E2E, jitter, frames apresentados, GPU, RAM, bateria e térmica sob carga e por 20 minutos.
+- Ciclo de vida ARCore/Camera2/MediaProjection/WebView, background, perda EGL, encerramento do Android, permissões e bind concorrente.
+- Sessão OpenXR em runtime compatível: eventos, perda de sessão/instância, waits, ações/háptica, EXT hands e limpeza parcial. Não testado em hardware.
+- Transição 3DoF↔6DoF e relocalização; segurança do layout perto do usuário; acessibilidade/conforto real.
+- Licenças/transitivas/SBOM, permissões e assinatura release; confirmar direitos das imagens originais.
 
-- Testar aparelhos e perfis de lente, shader/hand mapping, orientação e retorno de background.
-- Medir latência real, GPU, bateria e temperatura. Ajustar filtros por dados, não por quantidade.
-- Completar testes de lifecycle, QR com ARCore usando câmera, captura Android 14 e perda de EGL.
-- Melhorar transição/relocalização 3DoF ↔ 6DoF e espaço de referência.
+## Funcionalidades prioritárias ainda incompletas
 
-## P1 — funcionalidades solicitadas ainda incompletas
+| Sistema solicitado | Falta |
+|---|---|
+| Runtime separado Monado + Broker | Driver/port HMD de telefone e compositor out-of-process; cliente OpenXR/companion não substitui runtime. Monado-ALVR/monado-phone pesquisados, não incorporados como solução standalone. |
+| Shell integral sobre OpenXR | Portar dock, janelas, browser, MR e input à sessão; hoje a sessão é integração de API com cena de alvo/pontos. |
+| Apps Shizuku | Criar e gerir displays privados, input por display, auto-resize/lifecycle por app/OEM, múltiplos apps independentes, janelas curvas reais. |
+| Tracking completo | Métrica 3D/estéreo, joint confidence real, calibração, ROI, oclusão prolongada/cruzamento robusto, backend OpenCV/custom executável; contrato de backend não é implementação. |
+| Gestos extensíveis | Parte dos reconhecedores existe; bindings completos de back/home/confirm/cancel/env/screenshot, editor e conflito/prioridades generalizados ainda faltam. |
+| MR/SLAM | Mapa persistente, malhas/objetos, piso/parede/teto semânticos, anchors persistentes, guardian confiável, sombras e oclusão de mãos/UI. |
+| Marketplace | Manifestos/pacotes assinados, compatibilidade verificável, screenshots/trailers reais, download retomável, instalação/update com confirmação, segurança e recuperação. |
+| Browser/WebXR | Abas/janelas independentes, engine WebXR compatível, 180/360/estéreo, fullscreen e integração Wolvic. WebView atual não fornece isso. |
+| Ambientes | Sete tipos, GLB/glTF/KTX2, skybox/lightmap/LOD, personalização/importação; há dois panoramas originais. |
+| Áudio | HRTF/head-world locking, zonas, ducking e áudio de objetos. Sons UI estéreo não equivalem a áudio 3D completo. |
+| Performance | Vulkan, AHardwareBuffer para inferência, foveation, pacing, timewarp/late latching e benchmarks físicos. |
+| Extras | STT/TTS, vídeo/recording, notificações Android autorizadas, downloads/storage manager, guardian/calibração avançada, media controls, backup/restore, objetos editáveis e health monitor de produção. |
+| Dev API | Host/plugin IPC/transporte de cena, APK de exemplo interoperável e SDK versionado; existem contratos v1. |
 
-- Monado runtime APK de verdade: driver HMD, ownership câmera/display, compositor, swapchains e ações; integração com Broker oficial e hello_xr.
-- Port Wolvic para o runtime, engine atualizada, WebXR real, navegação/teclado em VR.
-- Displays de apps independentes via Shizuku com launch, Surface, auto-resize e injeção de input por display; revisão por versão Android/OEM e política de segurança.
-- API de jogos: host Android, transporte de cena, exemplo APK e SDK versionado.
-- Tracking métrico de duas mãos, matching de identidade, camera calibration, profundidade/oclusão e gestures robustos. Overlay 2D não equivale a isso.
-- Loja com manifesto assinado, compatibilidade/capabilities, download verificado, instalador PackageInstaller com confirmação e revisão de conteúdo.
+## Princípios para continuar
 
-## P2 — expansão depois de medir
-
-- glTF/KTX2 e modelos de jogo mais complexos; áudio espacial; acessibilidade e interação por controles Bluetooth.
-- Vídeos 360/180/estéreo; importação de panoramas pelo Storage Access Framework.
-- STT/TTS estritamente offline para IA; gestão de memória e suspensão da inferência sob carga VR.
-- Dataset real, treino e validação por aparelho do governador neural; entregar pesos somente com evidência de benefício e licença.
-- Ancoragem AR, passthrough com UI de privacidade, teclado virtual, múltiplas janelas e persistência.
-- Render pacing/Swappy, late latching/timewarp quando arquitetura permitir, qualidade/foveation por capacidade.
-- Releases assinadas, atualização segura, CI com aparelhos físicos.
-
-Adicionar bibliotecas sem utilizá-las aumenta APK, superfície de ataque, consumo e conflitos. A lista em THIRD_PARTY é um mapa de integrações, não a alegação de que dezenas de projetos já estão embarcados.
+Compilar, testar, corrigir, medir e revisar regressões a cada etapa. Não aumentar dependências/resolução sem dados; não ligar todos os subsistemas por padrão. Preservar fallback espacial e transparência sobre capacidade real. Novo código de rede/download deve exigir confirmação/verificação, sem telemetria/câmera/landmarks enviados por padrão.
