@@ -17,7 +17,7 @@ data class Quality(val renderScale: Float,val handWidth: Int,val handIntervalMs:
 class QualityScaler {
     private var ema=16.7f
     private var frames=0
-    var quality=Quality(.9f,384,33,true);private set
+    var quality=Quality(1f,384,33,true);private set
     fun update(frameMs: Float,targetMs: Float,thermal: Int,battery: Int,mode: QualityMode): Quality {
         if(frameMs.isFinite()&&frameMs>0)ema+=.06f*(frameMs-ema)
         // Safety changes are immediate; recovery remains hysteretic.

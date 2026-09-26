@@ -30,7 +30,7 @@ uniform sampler2D panorama,panel;
 uniform samplerExternalOES capture;
 uniform samplerExternalOES camera;
 uniform mat4 cameraProjection,cameraUv,depthUv;
-uniform int backgroundMode;
+uniform int backgroundMode,fillCamera;
 uniform highp usampler2D realDepth;uniform int depthActive;
 uniform int scene,curved,capturing,highlight,target;
 uniform float aspect;
@@ -46,7 +46,7 @@ void main(){
  if(backgroundMode==1){
    vec3 headDir=normalize(p.xyz/p.w);
    vec4 cameraClip=cameraProjection*vec4(headDir,0);
-   vec2 cuv=cameraClip.xy/cameraClip.w*.5+.5;
+   vec2 cuv=fillCamera==1?ndc*.5+.5:cameraClip.xy/cameraClip.w*.5+.5;
    if(all(greaterThanEqual(cuv,vec2(0)))&&all(lessThanEqual(cuv,vec2(1)))){
      vec2 tc=(cameraUv*vec4(cuv,0,1)).xy;c=texture(camera,tc).rgb;
    }
@@ -109,7 +109,7 @@ struct Renderer {
  float cameraFrame[32]{};
  std::array<float,24> anchors{};int anchorCount=0;
  float scale=1,aspect=2.4f;
- bool curved=true,dirty=true;
+ bool curved=true,dirty=true,fillCamera=true;
  Mat4 projections[2],eyes[2],world=Mat4::identity();
  CardboardEyeTextureDescription descriptions[2]{};
  std::array<float,24> balls{};
@@ -188,7 +188,7 @@ struct Renderer {
    if(ar)std::memcpy(world.m,ar,16*sizeof(float));
    Vec3 origin=world.position(),dir=world.direction({0,0,-1}).normalized();hover=-1;
    if(ui.handPointer){
-     Mat4 inverseCamera=cameraProjection.inverse();
+     Mat4 inverseCamera=fillCamera?projections[0]:cameraProjection.inverse();
      Vec3 ray{ui.pointerX*2-1,1-ui.pointerY*2,1};
      auto h=inverseCamera.direction(ray);h.x+=inverseCamera.m[12];h.y+=inverseCamera.m[13];h.z+=inverseCamera.m[14];
      dir=world.direction(h.normalized());
@@ -216,6 +216,7 @@ struct Renderer {
    glActiveTexture(GL_TEXTURE4);glBindTexture(GL_TEXTURE_2D,depthTexture);
    glUniform1i(glGetUniformLocation(prog,"depthActive"),depthActive);
    glUniform1i(glGetUniformLocation(prog,"backgroundMode"),backgroundMode);
+   glUniform1i(glGetUniformLocation(prog,"fillCamera"),fillCamera);
    glUniformMatrix4fv(glGetUniformLocation(prog,"cameraProjection"),1,GL_FALSE,cameraProjection.m);
    glUniformMatrix4fv(glGetUniformLocation(prog,"cameraUv"),1,GL_FALSE,cameraUv.m);
    glUniformMatrix4fv(glGetUniformLocation(prog,"depthUv"),1,GL_FALSE,depthUv.m);
@@ -232,7 +233,13 @@ struct Renderer {
      ui.draw(vp,transform);
      // Camera-normalized visualizer, NOT metric stereo hand reconstruction.
      if(handVertices){glUseProgram(lineProg);glBindVertexArray(lineVao);glBindBuffer(GL_ARRAY_BUFFER,lineBuffer);
-       glBufferSubData(GL_ARRAY_BUFFER,0,handVertices*2*sizeof(float),handLines.data());glLineWidth(1);glDrawArrays(GL_LINES,0,handVertices);}
+       std::array<float,168> mapped=handLines;
+       if(!fillCamera){auto camInverse=cameraProjection.inverse();auto eyeProjection=projections[i].inverse();
+         for(int n=0;n<handVertices;n++){auto ray=camInverse.direction({handLines[n*2],handLines[n*2+1],1})+camInverse.position();
+           float w=eyeProjection.m[3]*ray.x+eyeProjection.m[7]*ray.y+eyeProjection.m[11]*ray.z;
+           if(std::abs(w)>.00001f){auto clip=eyeProjection.direction(ray);mapped[n*2]=clip.x/w;mapped[n*2+1]=clip.y/w;}}
+       }
+       glBufferSubData(GL_ARRAY_BUFFER,0,handVertices*2*sizeof(float),mapped.data());glLineWidth(2);glDrawArrays(GL_LINES,0,handVertices);}
      // Gaze reticle, one physical pixel wide. No texture or extra material allocation.
      Vec3 cursor=origin+dir*1.5f;
      float cx=vp.m[0]*cursor.x+vp.m[4]*cursor.y+vp.m[8]*cursor.z+vp.m[12];
@@ -264,10 +271,10 @@ JNI(settings) void JNICALL Java_dev_trackmr_vr_NativeBridge_settings(JNIEnv*,job
 JNI(scene) void JNICALL Java_dev_trackmr_vr_NativeBridge_scene(JNIEnv*,jobject,jlong p,jint scene){ptr(p)->scene=std::clamp(scene,0,3);ptr(p)->score=0;}
 JNI(select) jint JNICALL Java_dev_trackmr_vr_NativeBridge_select(JNIEnv*,jobject,jlong p){auto r=ptr(p);if(r->scene&&r->hover>=0&&r->hover<6){if(r->scene!=3||r->hover==r->score%6)r->score++;else r->score=0;}return r->score;}
 JNI(hands) void JNICALL Java_dev_trackmr_vr_NativeBridge_hands(JNIEnv* e,jobject,jlong p,jfloatArray points){
- auto r=ptr(p);r->handVertices=0;if(!points||e->GetArrayLength(points)!=63)return;
- float data[63];e->GetFloatArrayRegion(points,0,63,data);
+ auto r=ptr(p);r->handVertices=0;if(!points)return;int count=e->GetArrayLength(points);if(count!=63&&count!=126)return;
+ float data[126];e->GetFloatArrayRegion(points,0,count,data);
  const int edges[][2]={{0,1},{1,2},{2,3},{3,4},{0,5},{5,6},{6,7},{7,8},{5,9},{9,10},{10,11},{11,12},{9,13},{13,14},{14,15},{15,16},{13,17},{0,17},{17,18},{18,19},{19,20}};
- for(auto& edge:edges)for(int index:edge){int n=r->handVertices++*2;r->handLines[n]=data[index*3]*2-1;r->handLines[n+1]=1-data[index*3+1]*2;}
+ for(int h=0;h<count/63;h++)for(auto& edge:edges)for(int index:edge){int n=r->handVertices++*2;r->handLines[n]=data[h*63+index*3]*2-1;r->handLines[n+1]=1-data[h*63+index*3+1]*2;}
 }
 JNI(draw) jint JNICALL Java_dev_trackmr_vr_NativeBridge_draw(JNIEnv* e,jobject,jlong p,jint sky,jint panel,jint external,jfloatArray transform,jboolean capture,jfloatArray ar,jlong prediction){
  float t[16],pose[16];e->GetFloatArrayRegion(transform,0,16,t);if(ar)e->GetFloatArrayRegion(ar,0,16,pose);
@@ -291,3 +298,5 @@ JNI(hitPoint) void JNICALL Java_dev_trackmr_vr_NativeBridge_hitPoint(JNIEnv* e,j
 JNI(gpuTime) jfloat JNICALL Java_dev_trackmr_vr_NativeBridge_gpuTime(JNIEnv*,jobject,jlong p){return ptr(p)->gpu.milliseconds;}
 
 JNI(depth) void JNICALL Java_dev_trackmr_vr_NativeBridge_depth(JNIEnv* e,jobject,jlong p,jint texture,jboolean active,jfloatArray uv){auto r=ptr(p);r->depthTexture=texture;r->depthActive=active;if(uv&&e->GetArrayLength(uv)==16)e->GetFloatArrayRegion(uv,0,16,r->depthUv.m);}
+
+JNI(viewOptions) void JNICALL Java_dev_trackmr_vr_NativeBridge_viewOptions(JNIEnv*,jobject,jlong p,jboolean fill){ptr(p)->fillCamera=fill;}

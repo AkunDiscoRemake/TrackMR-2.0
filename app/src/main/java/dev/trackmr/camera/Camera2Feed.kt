@@ -44,6 +44,8 @@ class Camera2Feed(private val activity: Activity,private val consumer: CameraCon
             val c=manager.getCameraCharacteristics(id)
             val sizes=c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!.getOutputSizes(ImageFormat.YUV_420_888)
             val size=sizes.filter{it.width<=1280&&it.height<=720}.minByOrNull{abs(it.width-640)+abs(it.height-480)} ?: sizes.minBy{it.width*it.height}
+            val previewSizes=c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!.getOutputSizes(SurfaceTexture::class.java)
+            val preview=previewSizes.filter{it.width<=1920&&it.height<=1080&&abs(it.width.toFloat()/it.height-size.width.toFloat()/size.height)<.02f}.minByOrNull{abs(it.width-1280)+abs(it.height-720)} ?: previewSizes.minBy{it.width*it.height}
             clockKnown=c.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE)==CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME
             @Suppress("DEPRECATION") val screen=activity.windowManager.defaultDisplay.rotation*90
             rotated=((c.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90)-screen+360)%360
@@ -54,7 +56,7 @@ class Camera2Feed(private val activity: Activity,private val consumer: CameraCon
             Matrix.perspectiveM(output.projection,0,fovy.coerceIn(25f,100f),aspect,.05f,100f)
             output.width=size.width;output.height=size.height;output.realtimeClock=clockKnown
             Matrix.setIdentityM(rotation,0);Matrix.translateM(rotation,0,.5f,.5f,0f);Matrix.rotateM(rotation,0,rotated.toFloat(),0f,0f,1f);Matrix.translateM(rotation,0,-.5f,-.5f,0f)
-            this.texture=SurfaceTexture(texture).apply{setDefaultBufferSize(size.width,size.height);setOnFrameAvailableListener({fresh.set(true)},handler)}
+            this.texture=SurfaceTexture(texture).apply{setDefaultBufferSize(preview.width,preview.height);setOnFrameAvailableListener({fresh.set(true)},handler)}
             surface=Surface(this.texture)
             val map=when(rotated){90->floatArrayOf(1f,0f,1f,1f,0f,0f);180->floatArrayOf(1f,1f,0f,1f,1f,0f);270->floatArrayOf(0f,1f,0f,0f,1f,1f);else->floatArrayOf(0f,0f,1f,0f,0f,1f)}
             reader=ImageReader.newInstance(size.width,size.height,ImageFormat.YUV_420_888,2).apply{

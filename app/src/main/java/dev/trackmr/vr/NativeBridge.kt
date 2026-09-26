@@ -15,6 +15,7 @@ object NativeBridge {
     external fun settings(handle: Long, scale: Float, curved: Boolean, aspect: Float)
     external fun scene(handle: Long, scene: Int)
     external fun select(handle: Long): Int
+    external fun viewOptions(handle: Long, fillCamera: Boolean)
     external fun hands(handle: Long, points: FloatArray?)
     external fun depth(handle: Long, texture: Int, active: Boolean, uv: FloatArray?)
     external fun anchors(handle: Long, positions: FloatArray, ambient: Float)
