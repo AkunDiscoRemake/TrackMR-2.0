@@ -64,3 +64,16 @@ SurfaceTexture do renderer
 Sistema → **Copiar diagnóstico** copia versão, fabricante/modelo/Android, backend/status/frame count, tempos, idade local, escala e estado Shizuku. Não inclui imagens, landmarks, conteúdo dos apps ou URLs. Cole esse texto ao relatar falha; não envie códigos de pareamento, credenciais ou conteúdo privado.
 
 Testar: câmera permitida/negada, CPU/GPU, pouca luz, rotacionar telefone antes da abertura, quente/frio, reiniciar, parar Shizuku, app não redimensionável, fechar durante input, resize/recenter, retorno do seletor/QR. Não houve medição de desempenho/latência/energia em hardware nesta revisão.
+
+## APK e validação desta entrega
+
+- Código compilado: `594bcee29e9a7e9f9aeaabd76d7c61fa736b0957`.
+- [Actions 36279394546 — aprovado](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36279394546), job `108508215113`, **3m09s**.
+- Passaram testes JVM, geometria/protocolo/curva C++, shaders ESSL, APKs, lint (exceção localizada/documentada para flag AOSP), assinatura debug e publicação.
+- **[Baixar alpha03 + companion + Dev API](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36279394546/artifacts/10917828874)**. O app principal é `TrackMR-2.0-alpha03-arm64.apk`. Inclui `SOURCE_REVISION.txt` e `SHA256SUMS.txt`. Expira em 10/10/2026.
+- [Relatórios](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36279394546/artifacts/10917729732).
+- SHA-256 do **arquivo do artefato**, conforme API GitHub (não de um APK individual): `sha256:75d53f1d6b42cb9e3100e3ce849744b5ca7d74dbdac9ae22c2ed9929d01800a7`.
+
+O download para o workspace retornou EOF no armazenamento de artefatos; entrega pelos links oficiais, sem alegar reinspeção local do binário. O commit de documentação posterior não muda o código compilado. Não houve teste físico em telefone/visor/Shizuku nesta sessão.
+
+APKs são debug. Se o Android recusar a atualização por certificado diferente de uma alpha anterior, a reinstalação pode exigir remover a versão antiga, **apagando ajustes/modelos locais**. Preserve os arquivos originais dos modelos e anote seus ajustes antes de decidir remover; não desinstale sem necessidade.

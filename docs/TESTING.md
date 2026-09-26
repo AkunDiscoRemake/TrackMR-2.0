@@ -59,3 +59,5 @@ Correções posteriores exigem o resultado da própria revisão no Actions. Este
 - UI/Shizuku/tipografia/diagnóstico: `99abb9f`, Actions `36278778732`, aprovado. Revisões posteriores exigem o respectivo build.
 
 Falta executar a matriz física da [alpha03](ALPHA03.md), inclusive tocar cada canto da janela curva, alternar planos/curvas, parar Shizuku no meio de um comando, apps não redimensionáveis, foreground/background e legibilidade pelo visor. Testes de matemática/política não comprovam sucesso de `am start` ou input num aparelho.
+
+- Alpha03 final: `594bcee`, Actions `36279394546`, aprovado (3m09s), incluindo limpeza de lançamento recusado e política de remoção de display.

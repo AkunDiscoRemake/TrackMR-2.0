@@ -30,7 +30,7 @@ Veja [ALPHA03: mãos, MR, nitidez, UI e Shizuku](docs/ALPHA03.md). Biblioteca em
 
 ## Compilar / baixar
 
-Entrega anterior alpha02 (histórico): [APKs e proveniência](docs/DELIVERY-alpha02.md). Para alpha03, consulte a execução aprovada mais recente na branch e as notas [ALPHA03](docs/ALPHA03.md).
+Entrega anterior alpha02 (histórico): [APKs e proveniência](docs/DELIVERY-alpha02.md). **Alpha03: [baixar APKs](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36279394546/artifacts/10917828874) · [build aprovado](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36279394546) · [notas e validação](docs/ALPHA03.md).**
 
 No GitHub: **Actions → Android • TrackMR 2.0 → execução verde → TrackMR-2.0-debug-arm64**.
 
