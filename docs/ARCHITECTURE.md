@@ -1,4 +1,6 @@
-# Arquitetura · MR-first alpha02
+# Arquitetura · MR-first alpha03
+
+Mudanças desta revisão: [ALPHA03](ALPHA03.md). O texto abaixo mantém a arquitetura base; detalhes de MR preencher, overlay de mãos, UI e display Shizuku estão nessa nota.
 
 ```
 :app → VrActivity (launcher é GLSurfaceView; sem MainActivity 2D)
@@ -34,10 +36,10 @@ Os diretórios `camera`, `browser`, `ai`, `audio`, `diagnostics`, `dock`, `track
 - Objetos em metros, +X direita/+Y acima/-Z frente. ARCore `displayOrientedPose` é relativa à posição/yaw inicial, mantendo gravidade. Não há fusão Cardboard/ARCore: transição/relocalização ainda precisa de validação de conforto.
 - Camera2 fornece imagem mono e orientação Cardboard; **não fornece posição/SLAM**. Intrínsecos/rotação/FOV aproximados precisam de calibração física por aparelho.
 - MR usa imagem real em OES. Falta/perda de imagem troca para espaço neutro; panorama só no modo VR selecionado pelo usuário.
-- Mãos MediaPipe: imagem → viewport, 21 landmarks e profundidade relativa. Não se desenha esqueleto normalizado como se fosse uma mão 3D métrica. Índice controla ponteiro; gestos usam amostras filtradas, sem previsão.
+- Mãos MediaPipe: imagem → viewport, 21 landmarks e profundidade relativa. Há overlay de esqueleto projetado por olho, identificado como câmera e não mão 3D métrica. Índice controla ponteiro; gestos usam amostras filtradas, sem previsão.
 - Depth opcional: buffer depth16 em R16UI, UV de IMAGE_NORMALIZED separado do UV OES, descartado se velho. Compara profundidade axial com objetos procedurais. Não cobre UI/mãos, não reconstrói ambiente e não resolve sozinho offset câmera/olhos.
 - Janelas são objetos/controles espaciais independentes. Até cinco, packet de 160 itens, atlas de 128 tiles. Teclado e fades têm orçamento testado. Layout salvo é relativo à sessão, não mapa persistente.
-- Navegador/captura são conteúdos 2D em uma superfície da janela; o dock e seus controles não são screenshot de launcher Android. O path atual de janelas é plano, com yaw; o antigo parâmetro de curvatura não constitui suporte completo a janelas curvas.
+- Navegador/captura são conteúdos 2D em uma superfície da janela; o dock e seus controles não são screenshot de launcher Android. Conteúdo browser/captura/app pode usar superfície cilíndrica tessellada, com hit/UV correspondentes; controles da moldura continuam planos.
 
 ## Threads e ownership
 
@@ -60,7 +62,7 @@ LLM síncrono não é cancelável instantaneamente: close é enfileirado depois 
 ## Apps e segurança
 
 1. MediaProjection: autorizado, notificação/parar, um app no Android 14+ quando escolhido; não injeta toque. Browser e captura não coexistem na única Surface de conteúdo.
-2. Shizuku: autorização separada; comandos restritos `am start --display`/`wm size -d` em display não primário. Criar/gerenciar displays e entrada isolada ainda falta. Não promete suporte por todos os OEMs.
+2. Shizuku: autorização separada; comandos restritos `am start --display`/`wm size -d` em display não primário. Um VirtualDisplay próprio agora recebe app via shell e input restrito ao display. Múltiplos apps simultâneos ainda faltam. Não promete suporte por todos os OEMs.
 3. Biblioteca: lançar abre Activity Android externa ao VR; recentes/favoritos são locais; detalhes/remoção usam o sistema.
 4. Browser: HTTPS, sem acesso file/content ou bridge JS, download bloqueado e câmera/mic negados por padrão. JavaScript do site é habilitado; inserção textual manual usa JSON quoting no campo DOM focado.
 5. IA: modelo local escolhido pelo usuário. Modelos são entrada de bibliotecas nativas e devem vir de fonte confiável. Nenhum peso é redistribuído sem licença.

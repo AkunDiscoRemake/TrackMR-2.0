@@ -12,7 +12,7 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 /** One owned app display. Public for shell launch, OWN_CONTENT_ONLY to prohibit mirroring. */
-class AndroidAppWindow(private val context: Context,private val bridge: ShizukuBridge,private val report: (String)->Unit) : AutoCloseable {
+class AndroidAppWindow(private val context: Context,private val bridge: ShizukuBridge,private val report: (String,Boolean)->Unit,private val onLaunchFailure: ()->Unit) : AutoCloseable {
     private val main=Handler(Looper.getMainLooper())
     private val worker=ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,ArrayBlockingQueue<Runnable>(2),ThreadPoolExecutor.AbortPolicy())
     private var display: VirtualDisplay?=null
@@ -20,12 +20,14 @@ class AndroidAppWindow(private val context: Context,private val bridge: ShizukuB
     var width=1280;private set
     var height=800;private set
     private var lastResize=0L
-    private fun command(action: (IShellBridge,Int)->Unit){
+    private fun command(fatal: Boolean=false,action: (IShellBridge,Int)->Unit){
         if(closed)return
         val id=display?.display?.displayId ?: return
-        val service=bridge.shell ?: run{report("Shizuku desconectado. Reconecte antes de controlar o app.");return}
-        try{worker.execute{runCatching{action(service,id)}.onFailure{e->main.post{if(!closed)report("App Shizuku: ${e.message}")}}}}
-        catch(_: java.util.concurrent.RejectedExecutionException){report("Entrada ocupada; aguarde o comando anterior")}
+        val service=bridge.shell ?: run{if(fatal)error("Shizuku desconectou antes do lançamento");report("Shizuku desconectado. Reconecte antes de controlar o app.",true);return}
+        try{worker.execute{runCatching{action(service,id)}.onFailure{e->main.post{
+            if(!closed){report("App Shizuku: ${e.cause?.message ?: e.message ?: e.javaClass.simpleName}",true);if(fatal){close();onLaunchFailure()}}
+        }}}}
+        catch(_: java.util.concurrent.RejectedExecutionException){report("Entrada ocupada; aguarde o comando anterior",false)}
     }
     fun open(surface: Surface,component: ComponentName){
         check(bridge.shell!=null){"Conecte/autorize Shizuku primeiro em Captura"}
@@ -33,7 +35,7 @@ class AndroidAppWindow(private val context: Context,private val bridge: ShizukuB
         display=context.getSystemService(DisplayManager::class.java).createVirtualDisplay("TrackMR-app-${android.os.SystemClock.uptimeMillis()}",width,height,240,surface,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION or DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY)
             ?: error("Android recusou display de app")
-        command{shell,id->val message=shell.launchOnDisplay(component.flattenToString(),id);main.post{if(!closed)report("App no display $id. ${message.take(120)}")}}
+        command(fatal=true){shell,id->val message=shell.launchOnDisplay(component.flattenToString(),id);main.post{if(!closed)report("App no display $id. ${message.take(120)}",false)}}
     }
     fun tap(u: Float,v: Float){val x=(u*width).toInt().coerceIn(0,width-1);val y=(v*height).toInt().coerceIn(0,height-1);command{s,id->s.tap(id,x,y)}}
     fun scroll(delta: Float){if(kotlin.math.abs(delta)<.01f)return;val w=width;val h=height;command{s,id->s.swipe(id,w/2,h/2,w/2,(h/2+delta*h*5).toInt().coerceIn(0,h-1))}}

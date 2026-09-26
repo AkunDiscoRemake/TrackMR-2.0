@@ -1,15 +1,15 @@
-# Desempenho e medições · alpha02
+# Desempenho e medições · alpha03
 
 **Sem benchmark em aparelho nesta entrega.** Metas de latência/FPS/potência não são resultados. Shader/teste/build verde não mede uso real de GPU, bateria ou conforto.
 
 ## Implementação atual
 
 - GLSurfaceView com render independente do worker de mãos; framebuffer Cardboard adaptativo, sem alterar ótica física.
-- ARCore `LATEST_CAMERA_IMAGE`; Camera2 fallback. Fonte única compartilhada com inferência, não duas câmeras concorrentes.
-- MediaPipe VIDEO, até duas mãos, GPU → CPU; inicialização/inferência/close no mesmo worker. Uma reserva em voo, sem fila crescente.
+- ARCore `LATEST_CAMERA_IMAGE`; Camera2 fallback. Fonte única compartilhada com inferência, não duas câmeras concorrentes. Modo preencher cobre as viewports com a imagem mono, mas não amplia o FOV físico; depth só no modo óptico.
+- MediaPipe VIDEO, até duas mãos, CPU padrão/GPU opcional com fallback CPU; inicialização/inferência/close no mesmo worker. Uma reserva em voo, sem fila crescente.
 - YUV downsample em bitmap/array reutilizado; largura/cadência adaptadas (192–512), não aumentar resolução como substituto de filtro/calibração.
 - Associação de pulsos e handedness como desempate; handedness não é probabilidade de cada joint. One Euro/Kalman/EMA/RAW no domínio, guard de median/outlier e reset temporal. Não empilhar filtros pesados por padrão.
-- Amostras >150 ms não controlam o ponteiro. Previsão do ponteiro limitada a 18 ms, nunca usada para decidir gestos.
+- Expiração acompanha processamento, entre 150 e 350 ms; limite absoluto evita manter indefinidamente um resultado velho. Essa tolerância não é redução da latência. Previsão do ponteiro limitada a 18 ms, nunca usada para decidir gestos.
 - Dock/janelas instanciados em lote; atlas limitado, upload de tiles só quando mudam. Não há promessa de zero alocações: layout, snapshots, filtros e AR queries ainda geram trabalho/alocações.
 - Depth opt-in; aquisição/upload limitado em cadência, buffer reaproveitado quando dimensões não mudam. Sem depth em aparelhos sem suporte.
 - GPU elapsed: quatro queries EXT, resultado só se disponível, sem espera bloqueante. Unsupported/disjoint = **N/D**, nunca zero inventado; queries afetadas por disjoint são invalidadas.
@@ -58,3 +58,5 @@ A segunda saída está reservada. Escala limitada a `[0.60, baseline]`, execuç�
 7. Documentar modelo, build, revisão, visor e configuração junto com cada resultado.
 
 Pendente: AHardwareBuffer/zero-copy de inferência, pacing Swappy/ADPF, Vulkan, foveation, timewarp/late latching próprio, calibração métrica câmera/olhos/mãos, ROI controlável, benchmark de NEON/libyuv e SLAM custom. Nenhuma dessas otimizações é declarada implementada só por haver biblioteca candidata.
+
+Janelas curvas usam 32 segmentos por instância. Maior legibilidade vem de geometria/tipografia proporcionais e escala inicial 1.0, não de prometer supersampling ilimitado. Input Shizuku usa comandos com fila limitada: latência por processo deve ser medida, não é entrada direta a 60 Hz.

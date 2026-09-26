@@ -49,3 +49,13 @@ Pelo menos três aparelhos de SoCs diferentes; sessões de 20 minutos; Perfetto;
 - Correções de lifecycle/depth/budgets: `7324be1`, Actions `36277281705`, aprovado (job 4m07s); [artefatos e proveniência](DELIVERY-alpha02.md).
 
 Correções posteriores exigem o resultado da própria revisão no Actions. Estes registros não são resultados de teste de câmera/HMD, potência ou latência física.
+
+## Regressões alpha03
+
+- `ImageOrientationTest`: rotação 0/90/180/270 e remapeamento inverso, expiração adaptativa limitada (350 ms absoluto).
+- `OwnedDisplayPolicyTest`: rejeita display principal, UID/pacote/nome alheios e componentes com argumentos injetados. Não executa shell nem simula permissões reais do OEM.
+- `tests/curved_window_test.cpp`: UV/ray hit correspondentes à superfície plana/cilíndrica, tamanhos/raios e misses. Incluído no CI.
+- Primeiro bloco mãos/MR: `9a203e0`, Actions `36278195081`, aprovado.
+- UI/Shizuku/tipografia/diagnóstico: `99abb9f`, Actions `36278778732`, aprovado. Revisões posteriores exigem o respectivo build.
+
+Falta executar a matriz física da [alpha03](ALPHA03.md), inclusive tocar cada canto da janela curva, alternar planos/curvas, parar Shizuku no meio de um comando, apps não redimensionáveis, foreground/background e legibilidade pelo visor. Testes de matemática/política não comprovam sucesso de `am start` ou input num aparelho.

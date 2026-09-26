@@ -1,6 +1,6 @@
 # Escopo entregue e pendências
 
-A alpha02 transforma o projeto em MR-first com dock/janelas espaciais e preserva Cardboard, conteúdo e integrações úteis. **Não conclui os 147 extras nem todos os sistemas de um OS XR.** A matriz do README descreve o que existe; teste automatizado não equivale a validação física.
+A alpha03 evolui a transformação o projeto em MR-first com dock/janelas espaciais e preserva Cardboard, conteúdo e integrações úteis. **Não conclui os 147 extras nem todos os sistemas de um OS XR.** A matriz do README descreve o que existe; teste automatizado não equivale a validação física.
 
 ## P0 — bloquear afirmações de maturidade até validar
 
@@ -17,7 +17,7 @@ A alpha02 transforma o projeto em MR-first com dock/janelas espaciais e preserva
 |---|---|
 | Runtime separado Monado + Broker | Driver/port HMD de telefone e compositor out-of-process; cliente OpenXR/companion não substitui runtime. Monado-ALVR/monado-phone pesquisados, não incorporados como solução standalone. |
 | Shell integral sobre OpenXR | Portar dock, janelas, browser, MR e input à sessão; hoje a sessão é integração de API com cena de alvo/pontos. |
-| Apps Shizuku | Criar e gerir displays privados, input por display, auto-resize/lifecycle por app/OEM, múltiplos apps independentes, janelas curvas reais. |
+| Apps Shizuku | Validar em aparelho o novo display/input/curvatura Shizuku (um app ativo); completar múltiplos apps independentes, input contínuo/Unicode e compatibilidade por OEM. |
 | Tracking completo | Métrica 3D/estéreo, joint confidence real, calibração, ROI, oclusão prolongada/cruzamento robusto, backend OpenCV/custom executável; contrato de backend não é implementação. |
 | Gestos extensíveis | Parte dos reconhecedores existe; bindings completos de back/home/confirm/cancel/env/screenshot, editor e conflito/prioridades generalizados ainda faltam. |
 | MR/SLAM | Mapa persistente, malhas/objetos, piso/parede/teto semânticos, anchors persistentes, guardian confiável, sombras e oclusão de mãos/UI. |

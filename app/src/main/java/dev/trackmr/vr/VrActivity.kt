@@ -352,7 +352,9 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         stopContent()
         val surface=captureSurface ?: error("Surface indisponível")
         captureTexture?.setDefaultBufferSize(1280,800)
-        val client=AndroidAppWindow(this,shizuku){notify(it)}
+        val client=AndroidAppWindow(this,shizuku,{message,error->notify(message,error)},{
+            stopContent();view.queueEvent{shell.surfaceKind=null}
+        })
         try{client.open(surface,component);appWindow=client;capturing=true
             view.queueEvent{shell.windows.spawn(WindowKind.ANDROID_APP);shell.surfaceKind=WindowKind.ANDROID_APP}
         }catch(e: Exception){client.close();throw e}
@@ -378,7 +380,13 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         stopService(Intent(this,CaptureService::class.java))
     }
     private fun attachCapture(){if(!resumed||browser!=null||appWindow!=null)return;val surface=captureSurface ?: return;if(capturing)return;capturing=captureService?.attach(surface,1280,720)==true;if(capturing)view.queueEvent{shell.windows.spawn(WindowKind.CAPTURE);shell.surfaceKind=WindowKind.CAPTURE}}
-    private fun notify(message: String,error: Boolean=false){notices.add(SystemClock.elapsedRealtimeNanos(),message,error);if(error)android.util.Log.e("TrackMR",message)}
+    private fun notify(message: String,error: Boolean=false){
+        notices.add(SystemClock.elapsedRealtimeNanos(),message,error)
+        if(error){
+            android.util.Log.e("TrackMR",message)
+            if(::view.isInitialized&&resumed)view.queueEvent{if(::shell.isInitialized){shell.windows.spawn(WindowKind.NOTIFICATIONS);refreshPages()}}
+        }
+    }
     private fun fatal(e: Exception){failed=true;notify(e.message ?: e.javaClass.simpleName,true);runOnUiThread{android.app.AlertDialog.Builder(this).setTitle("Falha no renderer XR").setMessage("${e.javaClass.simpleName}: ${e.message}").setPositiveButton("Encerrar"){_,_->finish()}.setCancelable(false).show()}}
     override fun onKeyDown(code: Int,event: KeyEvent): Boolean {if(code==KeyEvent.KEYCODE_VOLUME_UP||code==KeyEvent.KEYCODE_BUTTON_A){if(event.repeatCount==0)view.queueEvent{select()};return true};return super.onKeyDown(code,event)}
     override fun onDestroy(){
