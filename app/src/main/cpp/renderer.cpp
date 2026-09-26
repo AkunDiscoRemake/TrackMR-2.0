@@ -5,11 +5,13 @@
 #include <string>
 #include <array>
 #include <stdexcept>
+#include <mutex>
 #include "cardboard.h"
 #include "math.hpp"
 using namespace mr;
 namespace {
 JavaVM* vm=nullptr;
+std::once_flag sdkInitialization;
 int64_t bootNs() { timespec t{}; clock_gettime(CLOCK_BOOTTIME,&t); return int64_t(t.tv_sec)*1000000000LL+t.tv_nsec; }
 const char* vertex=R"(#version 300 es
 precision highp float;
@@ -97,7 +99,7 @@ struct Renderer {
  std::array<float,168> handLines{};
  int handVertices=0;
  Renderer(JNIEnv* env,jobject activity){
-   Cardboard_initializeAndroid(vm,activity);
+   std::call_once(sdkInitialization,[activity]{ Cardboard_initializeAndroid(vm,activity); });
    tracker=CardboardHeadTracker_create();
    (void)env;
  }

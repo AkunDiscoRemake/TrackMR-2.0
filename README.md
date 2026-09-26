@@ -30,6 +30,7 @@ No GitHub, abra **Actions → Android • TrackMR 2.0**. O workflow roda em push
 
 - `TrackMR-2.0-alpha01-arm64.apk` — launcher e Cardboard;
 - `TrackMR-Runtime-Companion-alpha01-arm64.apk` — diagnóstico OpenXR;
+- `TrackMR-Dev-API-v1.jar` — contratos e exemplo da API experimental;
 - checksums SHA-256 e revisão do código.
 
 São APKs **debug**, não releases assinadas para loja. Nenhum certificado de produção está no repositório. O workflow também publica relatórios de testes/lint. Um arquivo de workflow não prova que o build passou; confira o resultado da execução.

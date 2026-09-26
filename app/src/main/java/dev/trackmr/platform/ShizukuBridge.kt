@@ -16,12 +16,12 @@ class ShizukuBridge(context: Context) : AutoCloseable {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) { shell=IShellBridge.Stub.asInterface(binder) }
         override fun onServiceDisconnected(name: ComponentName?) { shell=null }
     }
-    fun status(): String = when {
+    fun status(): String = runCatching { when {
         !Shizuku.pingBinder() -> "Shizuku não está em execução"
         Shizuku.checkSelfPermission()!=PackageManager.PERMISSION_GRANTED -> "Shizuku precisa de autorização"
         shell==null -> "Shizuku autorizado • serviço desconectado"
         else -> "Shizuku conectado • uid ${runCatching { shell!!.uid() }.getOrDefault(-1)}"
-    }
+    } }.getOrDefault("Shizuku: serviço interrompido; conecte novamente")
     fun requestOrBind() {
         check(Shizuku.pingBinder()) { "Instale e inicie o Shizuku por depuração sem fio ou root." }
         if (Shizuku.checkSelfPermission()!=PackageManager.PERMISSION_GRANTED) Shizuku.requestPermission(200)

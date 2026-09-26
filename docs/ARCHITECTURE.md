@@ -26,6 +26,8 @@ O bootstrap fixa `googlevr/cardboard` em `6eea12f99ba825086838554d7702217d780282
 
 A API fornece projeção por olho, eye-from-head e malha de distorção. O renderer inverte as matrizes para construir raios por pixel e escreve cada olho no framebuffer. A API de distorção do Cardboard faz a composição final. Alterar a escala do framebuffer não altera o tamanho físico do display usado pelo cálculo das lentes. Há checagem de completude do framebuffer e logs de falha de shader.
 
+O SDK é inicializado uma vez por processo com um Context associado ao display, sem reter uma Activity; o QR é aberto em nova task a partir desse Context.
+
 Sem QR salvo, usa parâmetros oficiais Cardboard V1; isso é fallback, não calibração universal. QR é lido pela Activity oficial do SDK, com autorização de câmera.
 
 ## Coordenadas e limites

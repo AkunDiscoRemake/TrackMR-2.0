@@ -1,10 +1,10 @@
 package dev.trackmr.vr
 
-import android.app.Activity
+import android.content.Context
 /** Only the GL thread mutates the renderer; scan is an Android UI operation. */
 object NativeBridge {
     init { System.loadLibrary("trackmr") }
-    external fun create(activity: Activity): Long
+    external fun create(context: Context): Long
     external fun destroy(handle: Long)
     external fun surface(handle: Long)
     external fun resize(handle: Long, width: Int, height: Int)

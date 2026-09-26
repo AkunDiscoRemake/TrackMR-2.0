@@ -27,6 +27,7 @@ class VrActivity : ComponentActivity(), GLSurfaceView.Renderer {
     private lateinit var view: GLSurfaceView
     private lateinit var status: TextView
     private var handle=0L // GL-thread-owned
+    private lateinit var cardboardContext: CardboardContext
     private val textures=IntArray(4)
     private val transform=FloatArray(16).apply { Matrix.setIdentityM(this,0) }
     private var surfaceTexture: SurfaceTexture?=null
@@ -78,6 +79,7 @@ class VrActivity : ComponentActivity(), GLSurfaceView.Renderer {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        cardboardContext=CardboardContext.from(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility=View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -129,7 +131,7 @@ class VrActivity : ComponentActivity(), GLSurfaceView.Renderer {
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         try {
             if(handle!=0L)NativeBridge.destroy(handle)
-            handle=NativeBridge.create(this);NativeBridge.surface(handle);NativeBridge.resume(handle);NativeBridge.scene(handle,scene)
+            handle=NativeBridge.create(cardboardContext);NativeBridge.surface(handle);NativeBridge.resume(handle);NativeBridge.scene(handle,scene)
             ar?.contextLost()
             neural?.close();neural=if(prefs.getBoolean("neural",false))NeuralGovernor(this) else null
             GLES30.glGenTextures(4,textures,0)
