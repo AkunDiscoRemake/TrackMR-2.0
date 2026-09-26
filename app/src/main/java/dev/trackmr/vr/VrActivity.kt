@@ -77,6 +77,10 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
     private val thermalListener=PowerManager.OnThermalStatusChangedListener{thermal=it}
     private data class Installed(val label: String,val component: ComponentName)
     @Volatile private var installed=emptyList<Installed>()
+    private val openXrSession=registerForActivityResult(ActivityResultContracts.StartActivityForResult()){result->
+        val report=result.data?.getStringExtra("report") ?: "Sessão OpenXR encerrada sem relatório"
+        notify(report,report.contains("ERROR:"))
+    }
     private val cameraPermission=registerForActivityResult(ActivityResultContracts.RequestPermission()){granted->
         permissionAsked=true
         view.queueEvent{if(granted&&resumed)startCamera()else{experience.camera(CameraState.DENIED,"Permissão de câmera negada");notify("MR indisponível sem autorização da câmera",true)}}
@@ -237,7 +241,7 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         val sample=hands?.latest?.get();val ram=ActivityManager.MemoryInfo().also{getSystemService(ActivityManager::class.java).getMemoryInfo(it)}
         shell.pages[WindowKind.DIAGNOSTICS]=listOf(info("p95 ${"%.1f".format(stats.percentile(.95f))} ms\n${"%.0f".format(1000/lastFrameMs.coerceAtLeast(1f))} callbacks/s"),info("Render CPU ${"%.1f".format(renderMs)} ms\nGPU/display: não medidos"),info("Inferência ${sample?.inferenceMs?.let{"%.1f".format(it)} ?: "—"} ms\nFiltro ${sample?.filterMs?.let{"%.1f".format(it)} ?: "—"} ms"),info("Térmico $thermal\nEscala ${"%.0f".format(quality.quality.renderScale*100)}%"),info("RAM livre ${ram.availMem/1048576} MiB\nE2E: requer medição externa"),info("${width}×$height\n${"%.0f".format(1000/targetMs)} Hz"),info("Frames de câmera pulados\n${hands?.dropped?.get() ?: 0}"),info("${feed?.name ?: "Sem backend"}\nTelemetria desligada"))
         shell.pages[WindowKind.NOTIFICATIONS]=notices.snapshot().takeLast(8).reversed().map{info((if(it.error)"ERRO\n" else "")+it.message)}.ifEmpty{listOf(info("Sem notificações"))}
-        shell.pages[WindowKind.SYSTEM]=listOf(action("Autorizar câmera"){main{cameraPermission.launch(Manifest.permission.CAMERA)}},action("Desligar câmera"){cameraAllowed=false;stopCamera();experience.camera(CameraState.STOPPED,"Câmera desligada pelo usuário")},info("Microfone: não utilizado\nTelemetria: OFF"),action("Runtime OpenXR"){main{val intent=packageManager.getLaunchIntentForPackage("dev.trackmr.runtime") ?: error("Instale o Runtime Companion");startActivity(intent)}},action("Configuração do app"){main{startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName")))}},action("Sair com segurança"){shell.save();main{finish()}},info("${Build.MANUFACTURER} ${Build.MODEL}\nAndroid ${Build.VERSION.RELEASE}"))
+        shell.pages[WindowKind.SYSTEM]=listOf(action("Autorizar câmera"){main{cameraPermission.launch(Manifest.permission.CAMERA)}},action("Desligar câmera"){cameraAllowed=false;stopCamera();experience.camera(CameraState.STOPPED,"Câmera desligada pelo usuário")},info("Microfone: não utilizado\nTelemetria: OFF"),action("Sessão OpenXR real"){main{openXrSession.launch(Intent(this,dev.trackmr.openxr.SessionActivity::class.java))}},action("Configuração do app"){main{startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName")))}},action("Sair com segurança"){shell.save();main{finish()}},info("${Build.MANUFACTURER} ${Build.MODEL}\nAndroid ${Build.VERSION.RELEASE}"))
     }
     private fun loadEnvironment(id: String){
         prefs.edit().putString("environment",id).apply();val epoch=generation

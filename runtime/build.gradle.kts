@@ -6,7 +6,7 @@ android {
     defaultConfig {
         applicationId = "dev.trackmr.runtime"
         minSdk = 29; targetSdk = 35
-        versionCode = 1; versionName = "2.0.0-alpha01"
+        versionCode = 2; versionName = "2.0.0-alpha02"
         ndk { abiFilters += "arm64-v8a" }
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=c++_shared" } }
     }
@@ -15,4 +15,4 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
-dependencies { implementation("org.khronos.openxr:openxr_loader_for_android:1.1.36") }
+dependencies { implementation(project(":openxr")); implementation("org.khronos.openxr:openxr_loader_for_android:1.1.36") }

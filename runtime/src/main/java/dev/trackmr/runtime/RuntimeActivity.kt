@@ -32,6 +32,9 @@ class RuntimeActivity : Activity() {
                 runOnUiThread { if(!isDestroyed)report.text=diagnostics }
             }
         }
+        button("Abrir sessão OpenXR real (runtime externo)") {
+            startActivity(Intent(this,dev.trackmr.openxr.SessionActivity::class.java))
+        }
         report=TextView(this).apply { text="Nenhum teste executado.\nNão é uma implementação OpenXR certificada.";setTextColor(Color.WHITE);setTextIsSelectable(true);setPadding(0,28,0,0) };column.addView(report)
     }
     private fun brokerReport(): String = listOf("org.khronos.openxr.runtime_broker","org.khronos.openxr.system_runtime_broker").joinToString("\n\n") { authority ->

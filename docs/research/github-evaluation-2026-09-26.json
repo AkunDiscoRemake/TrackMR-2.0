@@ -1,0 +1,132 @@
+[
+  {
+    "repository": "googlevr/cardboard",
+    "url": "https://github.com/googlevr/cardboard",
+    "license": "NOASSERTION",
+    "archived": false,
+    "pushed_at": "2026-08-31T21:49:59Z",
+    "updated_at": "2026-09-23T10:22:31Z",
+    "default_branch": "master",
+    "description": "Open source Cardboard SDK and samples"
+  },
+  {
+    "repository": "google-ai-edge/mediapipe",
+    "url": "https://github.com/google-ai-edge/mediapipe",
+    "license": "Apache-2.0",
+    "archived": false,
+    "pushed_at": "2026-09-25T21:35:24Z",
+    "updated_at": "2026-09-26T18:14:09Z",
+    "default_branch": "master",
+    "description": "Cross-platform, customizable ML solutions for live and streaming media."
+  },
+  {
+    "repository": "KhronosGroup/OpenXR-SDK",
+    "url": "https://github.com/KhronosGroup/OpenXR-SDK",
+    "license": "Apache-2.0",
+    "archived": false,
+    "pushed_at": "2026-09-21T23:05:56Z",
+    "updated_at": "2026-09-25T15:12:33Z",
+    "default_branch": "main",
+    "description": "Generated headers and sources for OpenXR loader."
+  },
+  {
+    "repository": "KhronosGroup/OpenXR-SDK-Source",
+    "url": "https://github.com/KhronosGroup/OpenXR-SDK-Source",
+    "license": "Apache-2.0",
+    "archived": false,
+    "pushed_at": "2026-09-21T17:45:00Z",
+    "updated_at": "2026-09-25T15:12:31Z",
+    "default_branch": "main",
+    "description": "Sources for OpenXR loader, basic API layers, and example code."
+  },
+  {
+    "repository": "alvr-org/Monado-ALVR",
+    "url": "https://github.com/alvr-org/Monado-ALVR",
+    "license": "BSL-1.0",
+    "archived": false,
+    "pushed_at": "2024-12-28T23:10:47Z",
+    "updated_at": "2026-04-30T04:24:41Z",
+    "default_branch": "main",
+    "description": "Monado fork that integrates with ALVR"
+  },
+  {
+    "repository": "opencv/opencv",
+    "url": "https://github.com/opencv/opencv",
+    "license": "Apache-2.0",
+    "archived": false,
+    "pushed_at": "2026-09-25T13:18:01Z",
+    "updated_at": "2026-09-26T21:15:23Z",
+    "default_branch": "5.x",
+    "description": "Open Source Computer Vision Library"
+  },
+  {
+    "repository": "openxrlab/xrapi",
+    "url": "https://github.com/openxrlab/xrapi",
+    "license": "Apache-2.0",
+    "archived": false,
+    "pushed_at": "2024-06-28T14:37:39Z",
+    "updated_at": "2026-08-13T14:34:58Z",
+    "default_branch": "main",
+    "description": "OpenXRLab XRAPI is an open-source implementation of the Google ARCore and Apple ARKit"
+  },
+  {
+    "repository": "UZ-SLAMLab/ORB_SLAM3",
+    "url": "https://github.com/UZ-SLAMLab/ORB_SLAM3",
+    "license": "GPL-3.0",
+    "archived": false,
+    "pushed_at": "2024-07-24T08:41:52Z",
+    "updated_at": "2026-09-26T10:11:09Z",
+    "default_branch": "master",
+    "description": "ORB-SLAM3: An Accurate Open-Source Library for Visual, Visual-Inertial and Multi-Map SLAM"
+  },
+  {
+    "repository": "rpng/open_vins",
+    "url": "https://github.com/rpng/open_vins",
+    "license": "GPL-3.0",
+    "archived": false,
+    "pushed_at": "2025-11-30T08:23:17Z",
+    "updated_at": "2026-09-26T15:56:00Z",
+    "default_branch": "master",
+    "description": "An open source platform for visual-inertial navigation research."
+  },
+  {
+    "repository": "Igalia/wolvic",
+    "url": "https://github.com/Igalia/wolvic",
+    "license": "MPL-2.0",
+    "archived": false,
+    "pushed_at": "2026-09-23T07:40:55Z",
+    "updated_at": "2026-09-24T16:59:09Z",
+    "default_branch": "main",
+    "description": "A fast and secure browser for standalone virtual-reality and augmented-reality headsets."
+  },
+  {
+    "repository": "google/filament",
+    "url": "https://github.com/google/filament",
+    "license": "Apache-2.0",
+    "archived": false,
+    "pushed_at": "2026-09-26T00:18:56Z",
+    "updated_at": "2026-09-26T11:31:12Z",
+    "default_branch": "main",
+    "description": "Filament is a real-time physically based rendering engine for Android, iOS, Windows, Linux, macOS, and WebGL2"
+  },
+  {
+    "repository": "google/oboe",
+    "url": "https://github.com/google/oboe",
+    "license": "Apache-2.0",
+    "archived": false,
+    "pushed_at": "2026-09-21T09:55:13Z",
+    "updated_at": "2026-09-24T19:11:08Z",
+    "default_branch": "main",
+    "description": "Oboe is a C++ library that makes it easy to build high-performance audio apps on Android."
+  },
+  {
+    "repository": "ttomf/monado-phone",
+    "url": "https://github.com/ttomf/monado-phone",
+    "license": "BSL-1.0",
+    "archived": false,
+    "pushed_at": "2026-09-19T07:39:34Z",
+    "updated_at": "2026-09-26T14:50:23Z",
+    "default_branch": "main",
+    "description": "Experimental Monado driver for streaming your VR games from Linux to Android phone, wireless, with 6DOF and hand tracking."
+  }
+]

@@ -23,6 +23,7 @@ dependencies {
     implementation(project(":cardboard"))
     implementation(project(":core"))
     implementation(project(":xr"))
+    implementation(project(":openxr"))
     implementation(project(":handtracking"))
     implementation(project(":dev-api"))
     implementation("androidx.core:core-ktx:1.15.0")

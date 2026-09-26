@@ -1,4 +1,4 @@
-#include "../app/src/main/cpp/math.hpp"
+#include "../render/include/trackmr/math.hpp"
 #include <cassert>
 #include <random>
 int main(){

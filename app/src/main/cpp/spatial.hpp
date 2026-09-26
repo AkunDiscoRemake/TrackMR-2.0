@@ -1,5 +1,5 @@
 #pragma once
-#include "math.hpp"
+#include "trackmr/math.hpp"
 #include <GLES3/gl3.h>
 #include <array>
 #include <cmath>

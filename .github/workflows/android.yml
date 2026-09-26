@@ -28,6 +28,12 @@ jobs:
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Pinned Cardboard source + MediaPipe model
         run: ./scripts/bootstrap.sh
+      - name: GLES shader compiler
+        run: sudo apt-get update -qq && sudo apt-get install -y glslang-tools
+      - name: Compile and link ESSL shaders
+        run: python3 scripts/check_shaders.py
+      - name: OpenXR frame protocol tests
+        run: g++ -std=c++17 -Wall -Wextra -Werror tests/openxr_protocol_test.cpp -o /tmp/openxr_protocol && /tmp/openxr_protocol
       - name: Native geometry tests
         run: g++ -std=c++17 -Wall -Wextra -Werror tests/native_math_test.cpp -o /tmp/native_math_test && /tmp/native_math_test
       - name: Unit tests, APKs and lint
@@ -35,13 +41,13 @@ jobs:
       - name: APK integrity and provenance
         run: |
           mkdir -p artifacts
-          cp app/build/outputs/apk/debug/app-debug.apk artifacts/TrackMR-2.0-alpha01-arm64.apk
-          cp runtime/build/outputs/apk/debug/runtime-debug.apk artifacts/TrackMR-Runtime-Companion-alpha01-arm64.apk
+          cp app/build/outputs/apk/debug/app-debug.apk artifacts/TrackMR-2.0-alpha02-arm64.apk
+          cp runtime/build/outputs/apk/debug/runtime-debug.apk artifacts/TrackMR-Runtime-Companion-alpha02-arm64.apk
           cp dev-api/build/libs/dev-api.jar artifacts/TrackMR-Dev-API-v1.jar
           sha256sum artifacts/*.apk artifacts/*.jar > artifacts/SHA256SUMS.txt
           git rev-parse HEAD > artifacts/SOURCE_REVISION.txt
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-2.0-alpha01-arm64.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-Runtime-Companion-alpha01-arm64.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-2.0-alpha02-arm64.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-Runtime-Companion-alpha02-arm64.apk
       - uses: actions/upload-artifact@v4
         with:
           name: TrackMR-2.0-debug-arm64
@@ -54,6 +60,8 @@ jobs:
           name: verification-reports
           path: |
             core/build/reports/
+            xr/build/reports/
+            handtracking/build/reports/
             app/build/reports/
             runtime/build/reports/
             .cache/gradle-build.log

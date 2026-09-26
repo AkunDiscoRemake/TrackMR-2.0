@@ -13,7 +13,7 @@ set_property(TARGET GfxPluginCardboard PROPERTY LINK_FLAGS
 set_property(TARGET GfxPluginCardboard PROPERTY LINK_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/cardboard-gles.lds")
 add_library(trackmr SHARED renderer.cpp)
-target_include_directories(trackmr PRIVATE "${ROOT}/.deps/cardboard/sdk/include")
+target_include_directories(trackmr PRIVATE "${ROOT}/render/include" "${ROOT}/.deps/cardboard/sdk/include")
 target_compile_options(trackmr PRIVATE -Wall -Wextra -Werror=return-type -O2)
 target_link_libraries(trackmr GfxPluginCardboard android log GLESv3)
 # Android 15+ 16 KiB page compatibility.

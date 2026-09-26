@@ -6,3 +6,4 @@ dependencyResolutionManagement {
 rootProject.name = "TrackMR-2.0"
 include(":app", ":core", ":dev-api", ":runtime", ":cardboard")
 include(":xr", ":handtracking")
+include(":openxr")

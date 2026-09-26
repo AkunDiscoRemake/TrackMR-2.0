@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <mutex>
 #include "cardboard.h"
-#include "math.hpp"
+#include "trackmr/math.hpp"
 #include "spatial.hpp"
 using namespace mr;
 namespace {
