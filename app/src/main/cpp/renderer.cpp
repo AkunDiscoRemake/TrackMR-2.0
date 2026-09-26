@@ -8,6 +8,7 @@
 #include <mutex>
 #include "cardboard.h"
 #include "math.hpp"
+#include "spatial.hpp"
 using namespace mr;
 namespace {
 JavaVM* vm=nullptr;
@@ -26,6 +27,9 @@ out vec4 color;
 uniform mat4 invProjection,world,captureTransform;
 uniform sampler2D panorama,panel;
 uniform samplerExternalOES capture;
+uniform samplerExternalOES camera;
+uniform mat4 cameraProjection,cameraUv;
+uniform int backgroundMode;
 uniform int scene,curved,capturing,highlight,target;
 uniform float aspect;
 uniform vec4 balls[6];
@@ -34,21 +38,18 @@ void main(){
  vec3 d=normalize(mat3(world)*(p.xyz/p.w));
  vec3 o=world[3].xyz;
  vec2 uv=vec2(atan(d.x,-d.z)/6.2831853+.5,.5-asin(clamp(d.y,-1.,1.))/3.14159265);
- vec3 c=texture(panorama,uv).rgb;
- if(scene==0){
-   float t=-1.,x=0.;
-   if(curved==1){
-     float a=dot(d.xz,d.xz), b=dot(o.xz,d.xz), z=dot(o.xz,o.xz)-4.,disc=b*b-a*z;
-     if(a>0.000001&&disc>=0.){t=(-b+sqrt(disc))/a;vec3 h=o+d*t;x=atan(h.x,-h.z)*2.;}
-   }else if(abs(d.z)>.000001){t=(-2.-o.z)/d.z;x=o.x+d.x*t;}
-   vec2 q=vec2(x/min(aspect,5.)+.5,.5-(o.y+d.y*t));
-   if(t>0.&&all(greaterThanEqual(q,vec2(0)))&&all(lessThanEqual(q,vec2(1)))){
-     vec4 layer;
-     if(capturing==1){vec2 tc=(captureTransform*vec4(q.x,1.-q.y,0,1)).xy;layer=vec4(texture(capture,tc).rgb,1.);}
-     else layer=texture(panel,q);
-     c=mix(c,layer.rgb,layer.a);
+ vec3 c=vec3(.025,.032,.06)+.025*max(d.y,0.);
+ if(backgroundMode==2)c=texture(panorama,uv).rgb;
+ if(backgroundMode==1){
+   vec3 headDir=normalize(p.xyz/p.w);
+   vec4 cameraClip=cameraProjection*vec4(headDir,0);
+   vec2 cuv=cameraClip.xy/cameraClip.w*.5+.5;
+   if(all(greaterThanEqual(cuv,vec2(0)))&&all(lessThanEqual(cuv,vec2(1)))){
+     vec2 tc=(cameraUv*vec4(cuv,0,1)).xy;c=texture(camera,tc).rgb;
    }
- }else{
+ }
+
+ if(scene>0){
    float nearest=1000.;
    for(int i=0;i<6;i++){
      vec3 oc=o-balls[i].xyz;float b=dot(oc,d),disc=b*b-dot(oc,oc)+balls[i].w*balls[i].w;
@@ -91,6 +92,12 @@ struct Renderer {
  GLuint prog=0,lineProg=0,vao=0,lineVao=0,lineBuffer=0,fb=0,texture=0;
  GLint invLoc,worldLoc,transformLoc,sceneLoc,curveLoc,captureLoc,aspectLoc,ballsLoc,highlightLoc,targetLoc;
  int width=0,height=0,rw=0,rh=0,scene=0,score=0,hover=-1;
+ SpatialLayer ui;
+ GLuint cameraTexture=0;
+ Mat4 cameraProjection=Mat4::identity(),cameraUv=Mat4::identity();
+ int backgroundMode=0;
+ float cameraFrame[32]{};
+ std::array<float,24> anchors{};int anchorCount=0;
  float scale=1,aspect=2.4f;
  bool curved=true,dirty=true;
  Mat4 projections[2],eyes[2],world=Mat4::identity();
@@ -104,6 +111,7 @@ struct Renderer {
    (void)env;
  }
  ~Renderer(){
+   ui.release();
    CardboardHeadTracker_destroy(tracker);CardboardLensDistortion_destroy(lens);
    CardboardDistortionRenderer_destroy(distortion);
    if(prog)glDeleteProgram(prog);if(lineProg)glDeleteProgram(lineProg);
@@ -113,7 +121,7 @@ struct Renderer {
  }
  // Called on every new EGL context. Old GL names must not be deleted in the new context.
  void surface(){
-   fb=texture=0; prog=program(vertex,fragment);lineProg=program(lineVertex,lineFragment);
+   fb=texture=0; prog=program(vertex,fragment);lineProg=program(lineVertex,lineFragment);ui.initialize(program);
    glGenVertexArrays(1,&vao);glGenVertexArrays(1,&lineVao);glGenBuffers(1,&lineBuffer);
    glBindVertexArray(lineVao);glBindBuffer(GL_ARRAY_BUFFER,lineBuffer);
    glBufferData(GL_ARRAY_BUFFER,sizeof(handLines),nullptr,GL_DYNAMIC_DRAW);
@@ -124,7 +132,7 @@ struct Renderer {
    aspectLoc=glGetUniformLocation(prog,"aspect");ballsLoc=glGetUniformLocation(prog,"balls");
    highlightLoc=glGetUniformLocation(prog,"highlight");targetLoc=glGetUniformLocation(prog,"target");
    glUseProgram(prog);glUniform1i(glGetUniformLocation(prog,"panorama"),0);
-   glUniform1i(glGetUniformLocation(prog,"panel"),1);glUniform1i(glGetUniformLocation(prog,"capture"),2);
+   glUniform1i(glGetUniformLocation(prog,"panel"),1);glUniform1i(glGetUniformLocation(prog,"capture"),2);glUniform1i(glGetUniformLocation(prog,"camera"),3);
    // VrActivity creates a fresh renderer for each EGL context.
    dirty=true;
  }
@@ -169,8 +177,14 @@ struct Renderer {
    world=Mat4::quaternion(q).inverse(); // Cardboard sample exposes world-to-head rotation.
    if(ar)std::memcpy(world.m,ar,16*sizeof(float));
    Vec3 origin=world.position(),dir=world.direction({0,0,-1}).normalized();hover=-1;
-   float u,v;
-   if(scene==0&&!capturing&&panelUv(origin,dir,curved,aspect,u,v)&&v>.52f&&v<.9f)hover=100+std::min(4,int(u*5));
+   if(ui.handPointer){
+     Mat4 inverseCamera=cameraProjection.inverse();
+     Vec3 ray{ui.pointerX*2-1,1-ui.pointerY*2,1};
+     auto h=inverseCamera.direction(ray);h.x+=inverseCamera.m[12];h.y+=inverseCamera.m[13];h.z+=inverseCamera.m[14];
+     dir=world.direction(h.normalized());
+   }
+   ui.dockPointer=dir;
+   int uiHover=ui.hit(origin,dir);
    double time=bootNs()/1e9;
    float closest=100;
    for(int i=0;i<6;i++){
@@ -181,11 +195,17 @@ struct Renderer {
      balls[i*4]=pos.x;balls[i*4+1]=pos.y;balls[i*4+2]=pos.z;balls[i*4+3]=.16f;
      float hit=sphereHit(origin,dir,pos,.16f);if(scene&&hit>0&&hit<closest){closest=hit;hover=i;}
    }
+   if(uiHover>=0)hover=uiHover;
+   ui.upload();
    glBindFramebuffer(GL_FRAMEBUFFER,fb);glDisable(GL_DEPTH_TEST);glDisable(GL_CULL_FACE);glDisable(GL_BLEND);glDisable(GL_SCISSOR_TEST);
    glUseProgram(prog);glBindVertexArray(vao);
    glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,sky);
    glActiveTexture(GL_TEXTURE1);glBindTexture(GL_TEXTURE_2D,panel);
    glActiveTexture(GL_TEXTURE2);glBindTexture(0x8D65,external);
+   glActiveTexture(GL_TEXTURE3);glBindTexture(0x8D65,cameraTexture);
+   glUniform1i(glGetUniformLocation(prog,"backgroundMode"),backgroundMode);
+   glUniformMatrix4fv(glGetUniformLocation(prog,"cameraProjection"),1,GL_FALSE,cameraProjection.m);
+   glUniformMatrix4fv(glGetUniformLocation(prog,"cameraUv"),1,GL_FALSE,cameraUv.m);
    glUniform1i(sceneLoc,scene);glUniform1i(curveLoc,curved);glUniform1i(captureLoc,capturing);
    glUniform1f(aspectLoc,aspect);glUniform1i(highlightLoc,hover);glUniform1i(targetLoc,score%6);
    glUniform4fv(ballsLoc,6,balls.data());glUniformMatrix4fv(transformLoc,1,GL_FALSE,transform);
@@ -194,11 +214,18 @@ struct Renderer {
      Mat4 eyeWorld=world*eyes[i];
      glUniformMatrix4fv(invLoc,1,GL_FALSE,projections[i].m);glUniformMatrix4fv(worldLoc,1,GL_FALSE,eyeWorld.m);
      glDrawArrays(GL_TRIANGLES,0,3);
+     Mat4 vp=projections[i].inverse()*eyeWorld.inverse();
+     ui.draw(vp,transform);
      // Camera-normalized visualizer, NOT metric stereo hand reconstruction.
      if(handVertices){glUseProgram(lineProg);glBindVertexArray(lineVao);glBindBuffer(GL_ARRAY_BUFFER,lineBuffer);
        glBufferSubData(GL_ARRAY_BUFFER,0,handVertices*2*sizeof(float),handLines.data());glLineWidth(1);glDrawArrays(GL_LINES,0,handVertices);}
      // Gaze reticle, one physical pixel wide. No texture or extra material allocation.
-     float cross[]={-.008f,0,.008f,0,0,-.008f,0,.008f};
+     Vec3 cursor=origin+dir*1.5f;
+     float cx=vp.m[0]*cursor.x+vp.m[4]*cursor.y+vp.m[8]*cursor.z+vp.m[12];
+     float cy=vp.m[1]*cursor.x+vp.m[5]*cursor.y+vp.m[9]*cursor.z+vp.m[13];
+     float cw=vp.m[3]*cursor.x+vp.m[7]*cursor.y+vp.m[11]*cursor.z+vp.m[15];
+     if(std::abs(cw)>.001f){cx/=cw;cy/=cw;}else{cx=cy=0;}
+     float cross[]={cx-.008f,cy,cx+.008f,cy,cx,cy-.008f,cx,cy+.008f};
      glUseProgram(lineProg);glBindVertexArray(lineVao);glBindBuffer(GL_ARRAY_BUFFER,lineBuffer);
      glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(cross),cross);glDrawArrays(GL_LINES,0,4);
    }
@@ -231,4 +258,16 @@ JNI(hands) void JNICALL Java_dev_trackmr_vr_NativeBridge_hands(JNIEnv* e,jobject
 JNI(draw) jint JNICALL Java_dev_trackmr_vr_NativeBridge_draw(JNIEnv* e,jobject,jlong p,jint sky,jint panel,jint external,jfloatArray transform,jboolean capture,jfloatArray ar,jlong prediction){
  float t[16],pose[16];e->GetFloatArrayRegion(transform,0,16,t);if(ar)e->GetFloatArrayRegion(ar,0,16,pose);
  try{return ptr(p)->draw(sky,panel,external,t,capture,ar?pose:nullptr,prediction);}catch(const std::exception& x){error(e,x);return -1;}
+}
+
+JNI(camera) void JNICALL Java_dev_trackmr_vr_NativeBridge_camera(JNIEnv* e,jobject,jlong p,jint texture,jint mode,jfloatArray projection,jfloatArray uv){
+ auto r=ptr(p);r->cameraTexture=texture;r->backgroundMode=mode;
+ if(projection&&e->GetArrayLength(projection)==16)e->GetFloatArrayRegion(projection,0,16,r->cameraProjection.m);
+ if(uv&&e->GetArrayLength(uv)==16)e->GetFloatArrayRegion(uv,0,16,r->cameraUv.m);
+}
+JNI(spatial) void JNICALL Java_dev_trackmr_vr_NativeBridge_spatial(JNIEnv* e,jobject,jlong p,jfloatArray data,jint count,jfloat x,jfloat y,jboolean hand){
+ auto& ui=ptr(p)->ui;ui.count=std::clamp(count,0,SpatialLayer::capacity);
+ if(e->GetArrayLength(data)<ui.count*SpatialLayer::stride){ui.count=0;return;}
+ e->GetFloatArrayRegion(data,0,ui.count*SpatialLayer::stride,ui.data.data());
+ ui.pointerX=x;ui.pointerY=y;ui.handPointer=hand;
 }

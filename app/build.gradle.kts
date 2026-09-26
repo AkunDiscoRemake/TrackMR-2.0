@@ -7,8 +7,8 @@ android {
         applicationId = "dev.trackmr"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "2.0.0-alpha01"
+        versionCode = 2
+        versionName = "2.0.0-alpha02"
         ndk { abiFilters += "arm64-v8a" }
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=c++_shared" } }
     }
@@ -22,6 +22,8 @@ android {
 dependencies {
     implementation(project(":cardboard"))
     implementation(project(":core"))
+    implementation(project(":xr"))
+    implementation(project(":handtracking"))
     implementation(project(":dev-api"))
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-ktx:1.9.3")
