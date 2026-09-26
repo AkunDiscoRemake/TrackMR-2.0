@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(trackmr_probe LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+find_package(OpenXR REQUIRED CONFIG)
+add_library(trackmr_probe SHARED probe.cpp)
+target_compile_definitions(trackmr_probe PRIVATE XR_USE_PLATFORM_ANDROID)
+target_link_libraries(trackmr_probe OpenXR::openxr_loader android log)
+target_link_options(trackmr_probe PRIVATE "-Wl,-z,max-page-size=16384")

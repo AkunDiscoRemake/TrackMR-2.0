@@ -1,0 +1,16 @@
+.gradle/
+.deps/
+.cache/
+.cxx/
+**/build/
+local.properties
+*.jks
+*.keystore
+*.apk
+*.aab
+*.tflite
+*.task
+*.bin
+*.gguf
+.idea/
+__pycache__/

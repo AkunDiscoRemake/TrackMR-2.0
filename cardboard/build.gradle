@@ -1,0 +1,27 @@
+plugins {
+    id 'com.android.library'
+    id 'com.google.protobuf'
+}
+def upstream = rootProject.file('.deps/cardboard')
+android {
+    namespace 'com.google.cardboard.sdk'
+    compileSdk 35
+    defaultConfig { minSdk 26 }
+    sourceSets.main {
+        manifest.srcFile "$upstream/sdk/qrcode/android/AndroidManifest.xml"
+        java.srcDirs = ["$upstream/sdk/qrcode/android/java", "$upstream/sdk/device_params/android/java", "$upstream/sdk/screen_params/android/java", "$upstream/sdk/java_utils/android/java"]
+        res.srcDirs = ["$upstream/sdk/qrcode/android/res"]
+        proto.srcDirs = ["$upstream/proto"]
+        proto.includes = ['cardboard_device.proto']
+    }
+}
+protobuf {
+    protoc { artifact = 'com.google.protobuf:protoc:3.19.4' }
+    generateProtoTasks { all().each { task -> task.builtins { java { option 'lite' } } } }
+}
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.gms:play-services-vision:20.1.3'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'com.google.protobuf:protobuf-javalite:3.19.4'
+}

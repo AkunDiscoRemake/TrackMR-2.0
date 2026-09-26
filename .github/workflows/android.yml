@@ -1,0 +1,56 @@
+name: Android • TrackMR 2.0
+on:
+  push:
+    branches: [main, 'arena/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    name: Test + Android arm64 APKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Android toolchain
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+      - name: Pinned Cardboard source + MediaPipe model
+        run: ./scripts/bootstrap.sh
+      - name: Native geometry tests
+        run: g++ -std=c++17 -Wall -Wextra -Werror tests/native_math_test.cpp -o /tmp/native_math_test && /tmp/native_math_test
+      - name: Unit tests, APKs and lint
+        run: ./gradlew --no-daemon :core:test :app:assembleDebug :runtime:assembleDebug :app:lintDebug :runtime:lintDebug
+      - name: APK integrity and provenance
+        run: |
+          mkdir -p artifacts
+          cp app/build/outputs/apk/debug/app-debug.apk artifacts/TrackMR-2.0-alpha01-arm64.apk
+          cp runtime/build/outputs/apk/debug/runtime-debug.apk artifacts/TrackMR-Runtime-Companion-alpha01-arm64.apk
+          sha256sum artifacts/*.apk > artifacts/SHA256SUMS.txt
+          git rev-parse HEAD > artifacts/SOURCE_REVISION.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-2.0-alpha01-arm64.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-Runtime-Companion-alpha01-arm64.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TrackMR-2.0-debug-arm64
+          path: artifacts/
+          retention-days: 14
+      - name: Test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-reports
+          path: |
+            core/build/reports/
+            app/build/reports/
+            runtime/build/reports/
+          if-no-files-found: ignore
