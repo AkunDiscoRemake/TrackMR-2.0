@@ -58,6 +58,8 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
     private var hover=-1
     private var scene=0;private var score=0
     private var cameraStarted=0L
+    private var cameraAllowed=true
+    private var battery=100
     private var safeMode=false
     private var failed=false
     @Volatile private var resumed=false
@@ -99,7 +101,7 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         cardboardContext=CardboardContext.from(this);shizuku=ShizukuBridge(this)
         val unclean=prefs.getInt("unclean",0);safeMode=RecoveryPolicy(unclean).safeMode
         prefs.edit().putInt("unclean",unclean+1).apply()
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility=View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         view=GLSurfaceView(this).apply{
@@ -132,7 +134,7 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         if(!failed)prefs.edit().putInt("unclean",0).apply()
     }
     private fun startCamera(){
-        if(!resumed||textures[3]==0||feed!=null)return
+        if(!resumed||!cameraAllowed||textures[3]==0||feed!=null)return
         val needsCamera=experience.requested!=Experience.VR||(!safeMode&&prefs.getBoolean("hands",true))
         if(!needsCamera)return
         if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){experience.camera(CameraState.DENIED,"Autorize a câmera em Sistema");return}
@@ -189,13 +191,13 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
             // Do not draw a camera-normalized skeleton as fake metric 3D hands.
             NativeBridge.hands(handle,null)
             if(capturing&&captured.getAndSet(false)){captureTexture?.updateTexImage();captureTexture?.getTransformMatrix(transform)}
-            val battery=getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
             val mode=runCatching{QualityMode.valueOf(prefs.getString("quality","BALANCED")!!)}.getOrDefault(QualityMode.BALANCED)
             val q=quality.update(lastFrameMs,targetMs,thermal,battery,mode)
             hands?.let{it.intervalMs=q.handIntervalMs;it.inputWidth=q.handWidth;it.enabled=q.handsAllowed}
             NativeBridge.settings(handle,q.renderScale,prefs.getBoolean("curved",true),2.4f)
             if(start-lastStats>1_000_000_000){
                 lastStats=start
+                battery=getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                 shell.cameraActive=frame?.active==true
                 shell.headline=when(experience.active){Experience.MR->"MR • CÂMERA ATIVA";Experience.VR->"VR • ${if(shell.cameraActive)"CÂMERA: MÃOS" else "CÂMERA DESLIGADA"}";else->"MR INDISPONÍVEL • ESPAÇO SEGURO"}
                 shell.detail=if(frame?.active==true)"${feed?.name} • ${if(frame.tracking)"6DoF" else "3DoF"} • ${if(sample!=null)"mão detectada" else "olhar + toque"}" else experience.reason
@@ -211,7 +213,7 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
     private fun select(){if(handle==0L||!::shell.isInitialized)return;if(!shell.select(hover,SystemClock.elapsedRealtimeNanos()))score=NativeBridge.select(handle)}
     private fun openDock(item: DockItem){
         when(item){
-            DockItem.MR->{experience.request(Experience.MR);startCamera();if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED)runOnUiThread{cameraPermission.launch(Manifest.permission.CAMERA)}}
+            DockItem.MR->{cameraAllowed=true;experience.request(Experience.MR);startCamera();if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED)runOnUiThread{cameraPermission.launch(Manifest.permission.CAMERA)}}
             DockItem.VR->{experience.request(Experience.VR);loadEnvironment(prefs.getString("environment","loft")!!);if(!prefs.getBoolean("hands",true))stopCamera()}
             else->{val kind=when(item){DockItem.HOME->WindowKind.HOME;DockItem.LIBRARY,DockItem.RECENTS->WindowKind.LIBRARY;DockItem.STORE->WindowKind.STORE;DockItem.SETTINGS->WindowKind.SETTINGS;DockItem.BROWSER->WindowKind.BROWSER;DockItem.ENVIRONMENTS->WindowKind.ENVIRONMENTS;DockItem.CAPTURE->WindowKind.CAPTURE;DockItem.NOTIFICATIONS->WindowKind.NOTIFICATIONS;DockItem.PERFORMANCE->WindowKind.DIAGNOSTICS;DockItem.TRACKING->WindowKind.TRACKING;else->WindowKind.SYSTEM};shell.windows.spawn(kind);refreshPages()}
         }
@@ -231,11 +233,11 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         shell.pages[WindowKind.ENVIRONMENTS]=listOf(action("Horizonte dourado"){loadEnvironment("loft");experience.request(Experience.VR)},action("Noite violeta"){loadEnvironment("neon");experience.request(Experience.VR)},action("Voltar a MR"){openDock(DockItem.MR)},info("Panoramas reais do projeto\nSem profundidade"))
         shell.pages[WindowKind.BROWSER]=listOf(action("Wolvic / WebXR"){main{Catalog.openLink(this,"https://wolvic.com/")}},action("WebXR samples"){main{Catalog.openLink(this,"https://immersive-web.github.io/webxr-samples/")}},info("WebXR depende de browser\ne runtime compatíveis"))
         shell.pages[WindowKind.CAPTURE]=listOf(action("Compartilhar um app"){main{captureConsent.launch(getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent())}},action("Parar captura"){main{stopService(Intent(this,CaptureService::class.java))};shell.surfaceKind=null},action("Conectar Shizuku"){main{shizuku.requestOrBind()}},info("${shizuku.status()}"),info("Sem injeção de toque\nDRM permanece protegido"))
-        shell.pages[WindowKind.TRACKING]=listOf(info(hands?.status ?: "Mãos desligadas"),action(if(prefs.getBoolean("hands",true))"Desligar mãos" else "Ligar mãos"){prefs.edit().putBoolean("hands",!prefs.getBoolean("hands",true)).apply();safeMode=false;stopCamera();startCamera()},info("Planos: ${cameraFrame?.planes ?: 0}\nÂncoras: ${cameraFrame?.anchors ?: 0}"),info("${feed?.name ?: "Sem câmera"}\n${if(cameraFrame?.tracking==true)"6DoF válido" else "Sem posição métrica"}"),action("Reconectar câmera"){stopCamera();startCamera()},info("Pinça: selecionar\nPalma aberta: dock"),info("2 pinças: escala/giro\nMOVER: arrastar janela"))
+        shell.pages[WindowKind.TRACKING]=listOf(info(hands?.status ?: "Mãos desligadas"),action(if(prefs.getBoolean("hands",true))"Desligar mãos" else "Ligar mãos"){prefs.edit().putBoolean("hands",!prefs.getBoolean("hands",true)).apply();safeMode=false;stopCamera();startCamera()},info("Planos: ${cameraFrame?.planes ?: 0}\nÂncoras: ${cameraFrame?.anchors ?: 0}"),info("${feed?.name ?: "Sem câmera"}\n${if(cameraFrame?.tracking==true)"6DoF válido" else "Sem posição métrica"}"),action("Reconectar câmera"){cameraAllowed=true;stopCamera();startCamera()},info("Pinça: selecionar\nPalma aberta: dock"),info("2 pinças: escala/giro\nMOVER: arrastar janela"))
         val sample=hands?.latest?.get();val ram=ActivityManager.MemoryInfo().also{getSystemService(ActivityManager::class.java).getMemoryInfo(it)}
         shell.pages[WindowKind.DIAGNOSTICS]=listOf(info("p95 ${"%.1f".format(stats.percentile(.95f))} ms\n${"%.0f".format(1000/lastFrameMs.coerceAtLeast(1f))} callbacks/s"),info("Render CPU ${"%.1f".format(renderMs)} ms\nGPU/display: não medidos"),info("Inferência ${sample?.inferenceMs?.let{"%.1f".format(it)} ?: "—"} ms\nFiltro ${sample?.filterMs?.let{"%.1f".format(it)} ?: "—"} ms"),info("Térmico $thermal\nEscala ${"%.0f".format(quality.quality.renderScale*100)}%"),info("RAM livre ${ram.availMem/1048576} MiB\nE2E: requer medição externa"),info("${width}×$height\n${"%.0f".format(1000/targetMs)} Hz"),info("Frames de câmera pulados\n${hands?.dropped?.get() ?: 0}"),info("${feed?.name ?: "Sem backend"}\nTelemetria desligada"))
         shell.pages[WindowKind.NOTIFICATIONS]=notices.snapshot().takeLast(8).reversed().map{info((if(it.error)"ERRO\n" else "")+it.message)}.ifEmpty{listOf(info("Sem notificações"))}
-        shell.pages[WindowKind.SYSTEM]=listOf(action("Autorizar câmera"){main{cameraPermission.launch(Manifest.permission.CAMERA)}},action("Desligar câmera"){stopCamera();experience.camera(CameraState.STOPPED,"Câmera desligada pelo usuário")},info("Microfone: não utilizado\nTelemetria: OFF"),action("Runtime OpenXR"){main{val intent=packageManager.getLaunchIntentForPackage("dev.trackmr.runtime") ?: error("Instale o Runtime Companion");startActivity(intent)}},action("Configuração do app"){main{startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName")))}},action("Sair com segurança"){shell.save();main{finish()}},info("${Build.MANUFACTURER} ${Build.MODEL}\nAndroid ${Build.VERSION.RELEASE}"))
+        shell.pages[WindowKind.SYSTEM]=listOf(action("Autorizar câmera"){main{cameraPermission.launch(Manifest.permission.CAMERA)}},action("Desligar câmera"){cameraAllowed=false;stopCamera();experience.camera(CameraState.STOPPED,"Câmera desligada pelo usuário")},info("Microfone: não utilizado\nTelemetria: OFF"),action("Runtime OpenXR"){main{val intent=packageManager.getLaunchIntentForPackage("dev.trackmr.runtime") ?: error("Instale o Runtime Companion");startActivity(intent)}},action("Configuração do app"){main{startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName")))}},action("Sair com segurança"){shell.save();main{finish()}},info("${Build.MANUFACTURER} ${Build.MODEL}\nAndroid ${Build.VERSION.RELEASE}"))
     }
     private fun loadEnvironment(id: String){
         prefs.edit().putString("environment",id).apply();val epoch=generation

@@ -55,8 +55,8 @@ class SpatialShell(private val prefs: SharedPreferences,val atlas: SpatialAtlas)
                 val y=settings.y-(i/7)*.19f*settings.scale
                 val z=-cos(angle)*settings.distance
                 val color=when(i%4){0->floatArrayOf(.3f,.18f,.58f);1->floatArrayOf(.08f,.32f,.45f);2->floatArrayOf(.42f,.16f,.3f);else->floatArrayOf(.11f,.36f,.28f)}
-                add(100+i,atlas.tile("icon-$i",icon=i),x,y,z,.205f*settings.scale,.155f*settings.scale,angle,settings.opacity,a,color[0],color[1],color[2],selected=if(selected==100+i&&now<selectedUntil)1f else 0f)
-                if(a>.01f)add(0,atlas.tile("label-$i",item.label),x,y-.105f*settings.scale,z+.012f,.32f*settings.scale*(.92f+a*.08f),.06f*settings.scale,angle,a,0f,0f,0f,0f,1)
+                add(100+i,atlas.tile("icon-$i",icon=i),x,y,z,.205f*settings.scale,.155f*settings.scale,-angle,settings.opacity,a,color[0],color[1],color[2],selected=if(selected==100+i&&now<selectedUntil)1f else 0f)
+                if(a>.01f)add(0,atlas.tile("label-$i",item.label),x,y-.105f*settings.scale,z+.012f,.32f*settings.scale*(.92f+a*.08f),.06f*settings.scale,-angle,a,0f,0f,0f,0f,1)
             }
         }
         add(0,atlas.tile("headline",headline),0f,.75f,-2f,1.45f,.18f,0f,.94f,0f,.04f,if(cameraActive).25f else .08f,.16f)

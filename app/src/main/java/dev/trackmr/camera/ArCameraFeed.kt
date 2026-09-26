@@ -47,7 +47,7 @@ class ArCameraFeed(private val activity: Activity,private val consumer: CameraCo
             @Suppress("DEPRECATION")
             s.setDisplayGeometry(activity.windowManager.defaultDisplay.rotation,width,height)
             val f=s.update();lastFrame=f
-            output.timestampNs=f.timestamp;output.active=f.timestamp>0
+            output.timestampNs=f.timestamp;output.active=f.timestamp>0&&SystemClock.elapsedRealtimeNanos()-f.timestamp in 0L..350_000_000L
             output.width=width;output.height=height
             f.camera.getProjectionMatrix(output.projection,0,.05f,100f)
             coordinates.rewind();coordinates.put(floatArrayOf(-1f,-1f,1f,-1f,-1f,1f)).rewind();transformed.rewind()
