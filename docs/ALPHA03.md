@@ -46,6 +46,7 @@ SurfaceTexture do renderer
 - Resize do display produtor acompanha a proporção da janela, limitado em cadência/dimensões.
 - Serviço verifica ID > 0, nome, UID do proprietário, UID do chamador Binder e pacote **a cada operação**. Não injeta input no display principal nem em display de outro app.
 - Comandos são argumentos de ProcessBuilder, não strings interpretadas por shell; tempo/fila/saída limitados. Sem bypass de DRM/FLAG_SECURE.
+- Display pede DESTROY_CONTENT_ON_REMOVAL (flag AOSP `1 << 8`), para não mover o app para a tela principal ao fechar; confirmar comportamento no OEM. [Definição AOSP Android 15](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-15.0.0_r1/core/java/android/hardware/display/DisplayManager.java).
 - Serviço é versionado; autorização Shizuku agora liga o serviço no callback, e desconexão permite reconectar.
 
 **Limites:** um app Android ativo por vez nesta revisão; compartilha a Surface de conteúdo com browser/captura, portanto abrir um encerra o outro. Não são múltiplos apps Android simultâneos. Texto Shizuku limitado a ASCII; comandos input por processo têm latência, não equivalem a injeção contínua a 60 Hz. Apps não redimensionáveis, singleTask, OEMs, bloqueios de displays não confiáveis e conteúdo protegido podem impedir uso. Reflexão de DisplayInfo ocorre no serviço shell; incompatibilidade falha fechada. Falta teste físico Android/Shizuku.

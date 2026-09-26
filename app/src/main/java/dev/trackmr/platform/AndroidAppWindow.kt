@@ -33,7 +33,9 @@ class AndroidAppWindow(private val context: Context,private val bridge: ShizukuB
         check(bridge.shell!=null){"Conecte/autorize Shizuku primeiro em Captura"}
         check(display==null&&!closed)
         display=context.getSystemService(DisplayManager::class.java).createVirtualDisplay("TrackMR-app-${android.os.SystemClock.uptimeMillis()}",width,height,240,surface,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION or DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY)
+            // AOSP API29+: DESTROY_CONTENT_ON_REMOVAL is hidden from android.jar (1 << 8).
+            // Without it a PUBLIC display moves the app onto the phone when closed.
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION or DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or (1 shl 8))
             ?: error("Android recusou display de app")
         command(fatal=true){shell,id->val message=shell.launchOnDisplay(component.flattenToString(),id);main.post{if(!closed)report("App no display $id. ${message.take(120)}",false)}}
     }
