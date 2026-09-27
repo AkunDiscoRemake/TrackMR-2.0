@@ -148,8 +148,11 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
     }
     override fun onCreate(state: Bundle?){
         super.onCreate(state)
-        // One-time alpha05 isolation default; subsequent explicit CPU/GPU/ARCore choices persist.
-        if(!prefs.getBoolean("handIsolationV1",false))prefs.edit().putBoolean("handIsolationV1",true).putBoolean("cameraArCore",false).putBoolean("handsGpu",false).apply()
+        // One-time repair baseline: earlier broken input could leave hands/overlay disabled.
+        // Camera consent remains mandatory. Explicit choices made after this upgrade persist.
+        if(prefs.getInt("handRepairVersion",0)<6)prefs.edit().putInt("handRepairVersion",6)
+            .putBoolean("hands",true).putBoolean("handOverlay",true)
+            .putBoolean("cameraArCore",false).putBoolean("handsGpu",false).apply()
         cardboardContext=CardboardContext.from(this);shizuku=ShizukuBridge(this)
         assistant=LocalAssistant(applicationContext){notify(it.take(160))};audio=SpatialAudio(applicationContext)
         if(prefs.getInt("uiVersion",0)<3)prefs.edit().putInt("uiVersion",3).remove("spatialLayout").remove("dockY").putString("quality","QUALITY").apply()

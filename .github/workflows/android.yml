@@ -94,7 +94,7 @@ jobs:
       - name: Real JNI inference on Android, not mocks
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          api-level: 35
           arch: x86_64
           target: google_apis
           disable-animations: true

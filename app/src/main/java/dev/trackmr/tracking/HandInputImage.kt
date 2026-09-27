@@ -8,7 +8,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.IntBuffer
 
-/** Single inference worker owns storage. MPImage owns only each short-lived wrapper, not a Bitmap. */
+/** Single worker owns storage. In Bitmap mode each wrapper owns its fresh, disposable Bitmap. */
 class HandInputImage : AutoCloseable {
     enum class Mode { RGBA, BITMAP }
     var mode=Mode.RGBA
