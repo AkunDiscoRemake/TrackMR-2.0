@@ -60,3 +60,7 @@ A segunda saída está reservada. Escala limitada a `[0.60, baseline]`, execuç�
 Pendente: AHardwareBuffer/zero-copy de inferência, pacing Swappy/ADPF, Vulkan, foveation, timewarp/late latching próprio, calibração métrica câmera/olhos/mãos, ROI controlável, benchmark de NEON/libyuv e SLAM custom. Nenhuma dessas otimizações é declarada implementada só por haver biblioteca candidata.
 
 Janelas curvas usam 32 segmentos por instância. Maior legibilidade vem de geometria/tipografia proporcionais e escala inicial 1.0, não de prometer supersampling ilimitado. Input Shizuku usa comandos com fila limitada: latência por processo deve ser medida, não é entrada direta a 60 Hz.
+
+## Alpha04
+
+[Detalhes e testes](ALPHA04-HANDS.md): offsets YUV pré-calculados, liberação da imagem antes da inferência, overlay reutilizado e input de mãos por Binder/fila coalescente. A observação acima sobre processos Shizuku aplica-se ao caminho antigo/botões de recuperação; gestos contínuos não criam processos `input` por movimento. Sem benchmark físico ou percentual de ganho anunciado.

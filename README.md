@@ -1,10 +1,16 @@
-# TRACKMR2.0 · MR-first alpha03
+# TRACKMR2.0 · MR-first alpha04
 
 **Shell espacial Android para celular com lentes Cardboard. Abre diretamente no renderer XR e solicita MR real, sem launcher/menu 2D intermediário.** Não é um sistema pronto equivalente a um headset dedicado.
 
 O projeto preserva o SDK Cardboard, panoramas e ícone do repositório. Não usa recursos proprietários do Quest. Autorizações de câmera/captura, seletor de arquivo, leitor QR e instalação/configurações continuam sendo telas do Android: retire o visor para operá-las com segurança.
 
-## Revisão após feedback do aparelho
+## Controle por mãos na alpha04
+
+**[Baixar alpha04](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36281125532/artifacts/10918952304)** · [Build aprovado](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36281125532) · [Modelo, gestos, otimizações e testes](docs/ALPHA04-HANDS.md).
+
+Hand Landmarker oficial embutido (7.819.105 bytes), hash fixado e comparação com o asset dentro do APK. Aponte com a mão, faça pinça e segure para arrastar. **Toque físico na tela não seleciona o shell XR.** Input de mãos contínuo para browser/apps Shizuku, com cancelamento por perda da mão e fila limitada. Não é necessária importação de modelo de mãos.
+
+## Revisão anterior após feedback do aparelho
 
 Veja [ALPHA03: mãos, MR, nitidez, UI e Shizuku](docs/ALPHA03.md). Biblioteca em grade com ícones reais, dock compacto paginado, texto com proporção corrigida, orientação da inferência e overlay visível de mãos, MR preenchendo as viewports e novo caminho de **um app Android em janela curva com input Shizuku**. Ainda requer validação no celular; não é garantia de que todos os problemas físicos foram resolvidos.
 
@@ -34,8 +40,8 @@ Entrega anterior alpha02 (histórico): [APKs e proveniência](docs/DELIVERY-alph
 
 No GitHub: **Actions → Android • TrackMR 2.0 → execução verde → TrackMR-2.0-debug-arm64**.
 
-- `TrackMR-2.0-alpha03-arm64.apk` — shell MR/VR/Cardboard e cliente OpenXR opcional;
-- `TrackMR-Runtime-Companion-alpha03-arm64.apk` — diagnóstico/Broker e acesso ao cliente;
+- `TrackMR-2.0-alpha04-arm64.apk` — shell MR/VR/Cardboard e cliente OpenXR opcional;
+- `TrackMR-Runtime-Companion-alpha04-arm64.apk` — diagnóstico/Broker e acesso ao cliente;
 - `TrackMR-Dev-API-v1.jar`, `SHA256SUMS.txt`, `SOURCE_REVISION.txt`.
 
 APKs **debug**, não release assinada para loja. Artefatos expiram em 14 dias. O workflow também publica relatórios JVM/lint, compila shaders ESSL e executa testes nativos. Consulte a execução da revisão desejada; a existência do YAML não prova aprovação.
@@ -59,7 +65,7 @@ Android **10+**, **arm64-v8a**, GLES 3; giroscópio para orientação Cardboard.
 
 1. Abra o app: aparece a superfície XR e é solicitada autorização de câmera. Com consentimento, MR e mãos são iniciados automaticamente quando disponíveis. Sem câmera, a UI informa o espaço seguro e continua espacial.
 2. Retire o visor para **Configurações → QR das lentes**. Use o perfil correto; o fallback Cardboard V1 não serve para todas as lentes. Deixe a câmera traseira desobstruída.
-3. Aponte com indicador ou olhar; selecione com pinça, toque, volume + ou botão A. Palma aberta alterna o dock. Janela em MOVER + pinça arrasta; duas pinças escalam/giram. Menu/Voltar sai do jogo ou fecha a janela focada.
+3. Mostre indicador/polegar separados; aponte e selecione com pinça. Segurar a pinça arrasta conteúdo. Toque físico na tela não seleciona; volume + / botão A são recuperação opcional. Palma aberta alterna o dock. Janela em MOVER + pinça arrasta; duas pinças escalam/giram. Menu/Voltar sai do jogo ou fecha a janela focada.
 4. Tracking mostra backend/planos/âncoras, permite religar câmera/mãos e habilitar depth quando suportado. Sistema permite desligar câmera explicitamente; não religa apenas por voltar do background.
 5. VR/ambientes selecionam os dois panoramas do projeto; desligue mãos se não quiser manter câmera no modo VR.
 6. Para apps com input: inicie Shizuku, conecte em Captura, depois Biblioteca → app → Abrir janela Shizuku. Browser oferece URL HTTPS/teclado; Captura pede consentimento do Android. Ao fechar/minimizar a janela ativa, a fonte é encerrada. Apps lançados pela biblioteca abrem **fora do VR**.

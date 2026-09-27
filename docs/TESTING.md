@@ -61,3 +61,7 @@ Correções posteriores exigem o resultado da própria revisão no Actions. Este
 Falta executar a matriz física da [alpha03](ALPHA03.md), inclusive tocar cada canto da janela curva, alternar planos/curvas, parar Shizuku no meio de um comando, apps não redimensionáveis, foreground/background e legibilidade pelo visor. Testes de matemática/política não comprovam sucesso de `am start` ou input num aparelho.
 
 - Alpha03 final: `594bcee`, Actions `36279394546`, aprovado (3m09s), incluindo limpeza de lançamento recusado e política de remoção de display.
+
+## Alpha04
+
+`4ecb024` / Actions `36281125532` aprovado (3m17s), incluindo hash fixado e igualdade byte a byte do Hand Landmarker dentro do APK. Novos testes de sampling YUV, captura de pinça/identidade/perda e fila de input. [Evidência e roteiro físico](ALPHA04-HANDS.md). Sem prova de execução de câmera/input no dispositivo.

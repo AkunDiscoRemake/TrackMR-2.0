@@ -21,7 +21,7 @@
 | [Android NDK / LLVM](https://android.googlesource.com/platform/ndk/) | NDK 27.2.12479018 | C++/libc++, linker 16 KiB | Licenças upstream por componente. |
 | Google Play Services Vision | 20.1.3 | Leitor QR do Cardboard upstream | Componente Google, termos próprios; não é anunciado como código aberto. |
 
-O modelo HandLandmarker versão 1 é buscado do [bucket oficial MediaPipe](https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task). O script valida o arquivo e imprime SHA-256 para proveniência. Isso não é uma assinatura nem substitui a verificação jurídica dos termos do modelo. Pesos de chat devem ser escolhidos/importados pelo usuário com licença compatível; não são redistribuídos aqui.
+O modelo HandLandmarker versão 1 é buscado do [bucket oficial MediaPipe](https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task). A alpha04 fixa o SHA-256 em `scripts/hand_model.sha256`, valida os dois modelos TFLite e compara o arquivo com o asset dentro do APK. `HAND_MODEL.json` registra proveniência. Isso não é uma assinatura nem substitui a verificação jurídica dos termos do modelo. Pesos de chat devem ser escolhidos/importados pelo usuário com licença compatível; não são redistribuídos aqui.
 
 ## Integrações planejadas / referenciadas, NÃO embarcadas
 
