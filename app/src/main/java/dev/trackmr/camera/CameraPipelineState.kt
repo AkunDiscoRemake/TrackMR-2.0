@@ -40,3 +40,12 @@ class CameraHandoff {
         return restart
     }
 }
+
+/** Prefer stable supported cadence. Choosing the lowest lower bound permits long blurred exposures. */
+object CameraFrameRate {
+    fun choose(ranges: List<Pair<Int,Int>>): Pair<Int,Int>? {
+        val valid=ranges.filter{it.first>0&&it.second>=it.first}
+        return valid.filter{it.second<=30}.maxWithOrNull(compareBy<Pair<Int,Int>>{it.second}.thenBy{it.first})
+            ?: valid.minWithOrNull(compareBy<Pair<Int,Int>>{it.second}.thenByDescending{it.first})
+    }
+}

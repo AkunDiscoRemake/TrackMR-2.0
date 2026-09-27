@@ -72,15 +72,25 @@ class NativeHandPipelineTest {
                     if(frame==6){
                         assertEquals("No fake/replayed hand on black frame",0,tracker.rawHands)
                         assertTrue(tracker.latest.get()!!.hands.isEmpty())
+                        if(rotation==0)assertEquals("Lost hands must not leave a ghost overlay",0,NativeOverlayProbe.pixels(null,true))
                     }else{
                         assertTrue("No hand r=$rotation frame=$frame: ${tracker.diagnostic}",tracker.rawHands>0)
                         val hand=tracker.latest.get()!!.hands.firstOrNull()
                         assertNotNull("Filter removed real hand",hand)
                         assertEquals(63,hand!!.points.size)
                         assertTrue(hand.points.all{it.isFinite()})
+                        if(rotation==0&&frame==0){
+                            assertTrue("Real filtered hand produced no green GLES pixels",NativeOverlayProbe.pixels(hand.points,true)>40)
+                            assertTrue("Slow hand produced no amber GLES pixels",NativeOverlayProbe.pixels(hand.points,false)>40)
+                            android.util.Log.i("TrackMR-hands","PASS GLES readback: real filtered landmarks render green and amber pixels")
+                        }
                         val batch=tracker.latest.get()!!
                         val state=tracker.presentation(batch,batch.completedNs+16_000_000)
-                        assertTrue("New result hidden by renderer gate: $state / ${tracker.diagnostic}",state==HandPresentation.LIVE||state==HandPresentation.SLOW)
+                        val processing=batch.preprocessMs+batch.inferenceMs+batch.filterMs
+                        val age=batch.completedNs+16_000_000-batch.timestampNs
+                        val expected=when{age>1_500_000_000->HandPresentation.EXPIRED;processing>300f||age>650_000_000->HandPresentation.SLOW;else->HandPresentation.LIVE}
+                        assertEquals("Delivery gate must account for measured latency",expected,state)
+                        android.util.Log.i("TrackMR-hands","Delivery r=$rotation proc=${processing.toInt()}ms source=${age/1_000_000}ms state=$state")
                     }
                 }
                 android.util.Log.i("TrackMR-hands","PASS rotation=$rotation: 6 YUV frames detected real landmarks; black frame=0; ${tracker.modelCheck}")

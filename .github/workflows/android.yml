@@ -46,13 +46,13 @@ jobs:
         run: |
           mkdir -p artifacts
           cp .cache/hand-model-provenance.json artifacts/HAND_MODEL.json
-          cp app/build/outputs/apk/debug/app-debug.apk artifacts/TrackMR-2.0-alpha06-arm64.apk
-          cp runtime/build/outputs/apk/debug/runtime-debug.apk artifacts/TrackMR-Runtime-Companion-alpha06-arm64.apk
+          cp app/build/outputs/apk/debug/app-debug.apk artifacts/TrackMR-2.0-alpha07-arm64.apk
+          cp runtime/build/outputs/apk/debug/runtime-debug.apk artifacts/TrackMR-Runtime-Companion-alpha07-arm64.apk
           cp dev-api/build/libs/dev-api.jar artifacts/TrackMR-Dev-API-v1.jar
           sha256sum artifacts/*.apk artifacts/*.jar > artifacts/SHA256SUMS.txt
           git rev-parse HEAD > artifacts/SOURCE_REVISION.txt
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-2.0-alpha06-arm64.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-Runtime-Companion-alpha06-arm64.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-2.0-alpha07-arm64.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-Runtime-Companion-alpha07-arm64.apk
       - uses: actions/upload-artifact@v4
         with:
           name: TrackMR-2.0-debug-arm64
@@ -72,7 +72,7 @@ jobs:
             .cache/gradle-build.log
           if-no-files-found: ignore
   native-hands:
-    name: Android native hand inference (YUV + rotations)
+    name: Android native hands (YUV + GLES pixels)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -86,6 +86,8 @@ jobs:
         with:
           packages: platform-tools
       - run: ./scripts/bootstrap.sh
+      - name: NDK for production hand rendering probe
+        run: sdkmanager 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

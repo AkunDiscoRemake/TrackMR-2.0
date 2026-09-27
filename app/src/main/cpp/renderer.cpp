@@ -8,6 +8,7 @@
 #include <mutex>
 #include "cardboard.h"
 #include "trackmr/math.hpp"
+#include "trackmr/hand_overlay.hpp"
 #include "spatial.hpp"
 #include "gpu_timer.hpp"
 using namespace mr;
@@ -75,16 +76,6 @@ void main(){
  }
  color=vec4(c,1);
 }
-)";
-const char* lineVertex=R"(#version 300 es
-layout(location=0) in vec2 position;
-void main(){gl_Position=vec4(position,0,1);gl_PointSize=6.;}
-)";
-const char* lineFragment=R"(#version 300 es
-precision mediump float;
-out vec4 color;
-uniform vec3 lineColor;
-void main(){color=vec4(lineColor,1.);}
 )";
 GLuint shader(GLenum type,const char* code){
  GLuint s=glCreateShader(type);glShaderSource(s,1,&code,nullptr);glCompileShader(s);
@@ -240,9 +231,7 @@ struct Renderer {
            float w=eyeProjection.m[3]*ray.x+eyeProjection.m[7]*ray.y+eyeProjection.m[11]*ray.z;
            if(std::abs(w)>.00001f){auto clip=eyeProjection.direction(ray);mapped[n*2]=clip.x/w;mapped[n*2+1]=clip.y/w;}}
        }
-       glUniform3f(glGetUniformLocation(lineProg,"lineColor"),handInteractive?.25f:1.f,handInteractive?1.f:.65f,handInteractive?.85f:.1f);
-       glBufferSubData(GL_ARRAY_BUFFER,0,handVertices*2*sizeof(float),mapped.data());glLineWidth(2);glDrawArrays(GL_LINES,0,handVertices);
-       glDrawArrays(GL_POINTS,0,handVertices);}
+       mr::drawHandLines(lineProg,lineVao,lineBuffer,mapped.data(),handVertices,handInteractive);}
      // Gaze reticle, one physical pixel wide. No texture or extra material allocation.
      Vec3 cursor=origin+dir*1.5f;
      float cx=vp.m[0]*cursor.x+vp.m[4]*cursor.y+vp.m[8]*cursor.z+vp.m[12];
@@ -277,8 +266,7 @@ JNI(select) jint JNICALL Java_dev_trackmr_vr_NativeBridge_select(JNIEnv*,jobject
 JNI(hands) void JNICALL Java_dev_trackmr_vr_NativeBridge_hands(JNIEnv* e,jobject,jlong p,jfloatArray points,jboolean interactive){
  auto r=ptr(p);r->handInteractive=interactive;r->handVertices=0;if(!points)return;int count=e->GetArrayLength(points);if(count!=63&&count!=126)return;
  float data[126];e->GetFloatArrayRegion(points,0,count,data);
- const int edges[][2]={{0,1},{1,2},{2,3},{3,4},{0,5},{5,6},{6,7},{7,8},{5,9},{9,10},{10,11},{11,12},{9,13},{13,14},{14,15},{15,16},{13,17},{0,17},{17,18},{18,19},{19,20}};
- for(int h=0;h<count/63;h++)for(auto& edge:edges)for(int index:edge){int n=r->handVertices++*2;r->handLines[n]=data[h*63+index*3]*2-1;r->handLines[n+1]=1-data[h*63+index*3+1]*2;}
+ r->handVertices=mr::handLines(data,count,r->handLines.data());
 }
 JNI(draw) jint JNICALL Java_dev_trackmr_vr_NativeBridge_draw(JNIEnv* e,jobject,jlong p,jint sky,jint panel,jint external,jfloatArray transform,jboolean capture,jfloatArray ar,jlong prediction){
  float t[16],pose[16];e->GetFloatArrayRegion(transform,0,16,t);if(ar)e->GetFloatArrayRegion(ar,0,16,pose);

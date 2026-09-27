@@ -2,6 +2,8 @@ plugins { id("com.android.application"); kotlin("android") }
 android {
     namespace="dev.trackmr.validation"
     compileSdk=35
+    ndkVersion="27.2.12479018"
+    externalNativeBuild { cmake { path=file("src/main/cpp/CMakeLists.txt");version="3.22.1" } }
     defaultConfig {
         applicationId="dev.trackmr.validation"
         minSdk=29;targetSdk=35
@@ -13,7 +15,7 @@ android {
     sourceSets["main"].assets.srcDir("../app/src/main/assets")
     androidResources { noCompress += "task" }
 }
-// Compile the EXACT production tracker, not a mock or copy. No launcher, renderer or camera HAL test.
+// Compile the EXACT production tracker, not a mock or copy. No Activity, full Cardboard compositor or camera HAL test; shared hand draw has a GLES probe.
 kotlin.sourceSets["main"].kotlin.apply {
     srcDir("../app/src/main/java")
     include("dev/trackmr/tracking/HandTracker.kt", "dev/trackmr/tracking/HandModelCheck.kt", "dev/trackmr/tracking/HandInputImage.kt",

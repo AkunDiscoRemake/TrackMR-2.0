@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(hand_render_validation LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+get_filename_component(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
+add_library(hand_render_validation SHARED overlay_probe.cpp)
+target_include_directories(hand_render_validation PRIVATE "${ROOT}/render/include")
+target_link_libraries(hand_render_validation GLESv3 EGL)
+target_link_options(hand_render_validation PRIVATE "-Wl,-z,max-page-size=16384")

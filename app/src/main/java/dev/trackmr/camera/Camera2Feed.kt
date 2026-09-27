@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import dev.trackmr.handtracking.CameraOrientation
+import android.util.Range
 import android.view.Surface
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
@@ -95,8 +96,8 @@ class Camera2Feed(private val activity: Activity,private val consumer: CameraCon
                                     if(android.os.Build.VERSION.SDK_INT>=31&&c.get(CameraCharacteristics.SCALER_AVAILABLE_ROTATE_AND_CROP_MODES)?.contains(CaptureRequest.SCALER_ROTATE_AND_CROP_NONE)==true)
                                         set(CaptureRequest.SCALER_ROTATE_AND_CROP,CaptureRequest.SCALER_ROTATE_AND_CROP_NONE)
                                     set(CaptureRequest.CONTROL_AE_MODE,CaptureRequest.CONTROL_AE_MODE_ON)
-                                    val range=c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)?.filter{it.upper<=30}?.maxByOrNull{it.upper*100-it.lower}
-                                    if(range!=null)set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,range)
+                                    val range=CameraFrameRate.choose(c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)?.map{it.lower to it.upper}.orEmpty())
+                                    if(range!=null)set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,Range(range.first,range.second))
                                 }.build()
                                 session.setRepeatingRequest(request,null,handler);status="Camera2 • sensor $sensor° / tela $screen° / YUV $rotated° • sem SLAM"
                             }catch(e: Exception){status="Camera2 captura: ${e.message}";cameraFailed=true}
