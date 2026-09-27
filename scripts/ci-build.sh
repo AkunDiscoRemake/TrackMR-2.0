@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 mkdir -p .cache
-if ! ./gradlew --no-daemon :core:test :xr:test :handtracking:test :dev-api:jar :app:assembleDebug :runtime:assembleDebug :app:lintDebug :runtime:lintDebug 2>&1 | tee .cache/gradle-build.log; then
+if ! ./gradlew --no-daemon :core:test :xr:test :handtracking:test :dev-api:jar :app:testDebugUnitTest :app:assembleDebug :runtime:assembleDebug :app:lintDebug :runtime:lintDebug 2>&1 | tee .cache/gradle-build.log; then
   # API-visible annotation even when the runner's log download endpoint is unavailable.
   python3 - <<'PY'
 from pathlib import Path

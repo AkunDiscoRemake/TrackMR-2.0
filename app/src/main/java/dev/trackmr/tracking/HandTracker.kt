@@ -1,10 +1,8 @@
 package dev.trackmr.tracking
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.media.Image
 import android.os.SystemClock
-import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.core.RunningMode
@@ -41,8 +39,7 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
     private var plan: YuvSamplingPlan?=null
     private val lumaTable=IntArray(256)
     @Volatile var modelBytes=0L;private set
-    private var pixels=IntArray(0)
-    private var bitmap: Bitmap?=null
+    private val inputImage=HandInputImage()
     private var lastSubmitted=0L
     private var lastImageTimestamp=0L
     private var lastModelTimestamp=0L
@@ -82,13 +79,12 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
                 lastImageTimestamp=capture
                 val preStart=SystemClock.elapsedRealtimeNanos()
                 val rotation=ImageOrientation.degrees(viewTransform)
-                val input=yuvToBitmap(image,rotation)
+                prepareRgba(image,rotation)
                 image.close();imageClosed=true // release camera buffer before expensive inference
                 val preMs=(SystemClock.elapsedRealtimeNanos()-preStart)/1e6f
-                val mpImage=BitmapImageBuilder(input).build()
                 val inferStart=SystemClock.elapsedRealtimeNanos()
                 val stamp=maxOf(capture/1_000_000,lastModelTimestamp+1);lastModelTimestamp=stamp
-                val result=try{model.detectForVideo(mpImage,stamp)}finally{mpImage.close()}
+                val result=inputImage.withImage{model.detectForVideo(it,stamp)}
                 val inferMs=(SystemClock.elapsedRealtimeNanos()-inferStart)/1e6f
                 val filterStart=SystemClock.elapsedRealtimeNanos()
                 val observations=result.landmarks().mapIndexed { index,points->
@@ -117,7 +113,7 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
         }
     }
     private var imageQuality=1f
-    private fun yuvToBitmap(image: Image,rotation: Int): Bitmap {
+    private fun prepareRgba(image: Image,rotation: Int) {
         val crop=image.cropRect
         val yp=image.planes[0];val up=image.planes[1];val vp=image.planes[2]
         val requested=inputWidth.coerceIn(192,512)
@@ -127,9 +123,7 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
             p=YuvSamplingPlan(crop.left,crop.top,crop.width(),crop.height(),requested,rotation,yp.rowStride,yp.pixelStride,up.rowStride,up.pixelStride,vp.rowStride,vp.pixelStride);plan=p
         }
         val width=p.width;val height=p.height
-        if(bitmap?.width!=width||bitmap?.height!=height){
-            bitmap?.recycle();bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);pixels=IntArray(width*height)
-        }
+        val pixels=inputImage.prepare(width,height)
         val yPlane=yp;val uPlane=up;val vPlane=vp
         val yBuffer=yp.buffer;val uBuffer=up.buffer;val vBuffer=vp.buffer
         val yBase=yBuffer.position();val uBase=uBuffer.position();val vBase=vBuffer.position()
@@ -153,14 +147,13 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
                 val red=((yy+409*v+128) shr 8).coerceIn(0,255)
                 val green=((yy-100*u-208*v+128) shr 8).coerceIn(0,255)
                 val blue=((yy+516*u+128) shr 8).coerceIn(0,255)
-                pixels[index++]=(255 shl 24) or (red shl 16) or (green shl 8) or blue
+                pixels.put(index++,(255 shl 24) or (blue shl 16) or (green shl 8) or red)
             }
         }
-        return bitmap!!.apply { setPixels(pixels,0,width,0,0,width,height) }
     }
     @Synchronized fun closeAfterDrain(onDrained: ()->Unit){
         if(!closed.compareAndSet(false,true))return
-        worker.execute{try{landmarker?.close();landmarker=null;bitmap?.recycle();latest.set(null)}finally{onDrained()}}
+        worker.execute{try{landmarker?.close();landmarker=null;inputImage.close();latest.set(null)}finally{onDrained()}}
         worker.shutdown()
     }
     override fun close(){closeAfterDrain{}}

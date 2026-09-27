@@ -20,6 +20,8 @@ android {
     androidResources { noCompress += listOf("task", "tflite", "bin") }
 }
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
     implementation(project(":cardboard"))
     implementation(project(":core"))
     implementation(project(":xr"))
