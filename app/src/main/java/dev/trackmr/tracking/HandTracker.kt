@@ -65,7 +65,7 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
     private var plan: YuvSamplingPlan?=null
     private val lumaTable=IntArray(256)
     @Volatile var modelBytes=0L;private set
-    private val inputImage=HandInputImage()
+    private val inputImage=HandInputImage().apply{mode=HandInputImage.Mode.BITMAP}
     private var lastSubmitted=0L
     private var lastImageTimestamp=0L
     private var lastModelTimestamp=0L
@@ -85,15 +85,9 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
             if(checked==null){
                 stage="autoteste local do modelo";modelCheck="testando"
                 landmarker=createModel(gpu)
-                try{
-                    HandModelCheck.verify(context,landmarker!!,HandInputImage.Mode.RGBA)
-                    checked=HandInputImage.Mode.RGBA
-                }catch(e: Exception){
-                    android.util.Log.w("TrackMR-hands","RGBA self-test failed; testing official Bitmap path",e)
-                    landmarker?.close();landmarker=createModel(gpu)
-                    HandModelCheck.verify(context,landmarker!!,HandInputImage.Mode.BITMAP)
-                    checked=HandInputImage.Mode.BITMAP
-                }
+                // Use the HandLandmarker Android documented Bitmap path, not raw-buffer JNI.
+                HandModelCheck.verify(context,landmarker!!,HandInputImage.Mode.BITMAP)
+                checked=HandInputImage.Mode.BITMAP
                 // Crucial: destroy reference tracking state before any live camera frame.
                 landmarker?.close();landmarker=null
                 checkedModes[gpu]=checked!!

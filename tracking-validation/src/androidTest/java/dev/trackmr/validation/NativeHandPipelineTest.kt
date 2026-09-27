@@ -44,7 +44,7 @@ class NativeHandPipelineTest {
                 assertNull("Reference hand must NEVER reach the shell",tracker.latest.get())
                 assertEquals(0L,tracker.completed.get())
                 tracker.intervalMs=0;tracker.inputWidth=384
-                repeat(6){frame->
+                repeat(7){frame->
                     val target=writer.dequeueInputImage()
                     // Sensor fixture is rotated opposite to display; production must recover it.
                     fun rgb(x:Int,y:Int):Int {
@@ -53,7 +53,7 @@ class NativeHandPipelineTest {
                         return source[dy*upright.width+dx]
                     }
                     for(y in 0 until h)for(x in 0 until w){
-                        val c=rgb(x,y);val r=c ushr 16 and 255;val g=c ushr 8 and 255;val b=c and 255
+                        val c=if(frame==6)0 else rgb(x,y);val r=c ushr 16 and 255;val g=c ushr 8 and 255;val b=c and 255
                         put(target.planes[0],x,y,((66*r+129*g+25*b+128) shr 8)+16)
                         if(x%2==0&&y%2==0){
                             put(target.planes[1],x/2,y/2,((-38*r-74*g+112*b+128) shr 8)+128)
@@ -68,12 +68,18 @@ class NativeHandPipelineTest {
                     tracker.submit(input!!,CameraOrientation.imageToView(rotation,0))
                     await({"Inference: ${tracker.error} / ${tracker.diagnostic}"}){tracker.completed.get()>count||tracker.failedFrames.get()>0}
                     assertEquals("Native failure: ${tracker.error}",0L,tracker.failedFrames.get())
-                    assertTrue("No hand r=$rotation frame=$frame: ${tracker.diagnostic}",tracker.rawHands>0)
-                    val hand=tracker.latest.get()!!.hands.firstOrNull()
-                    assertNotNull("Filter removed real hand",hand)
-                    assertEquals(63,hand!!.points.size)
-                    assertTrue(hand.points.all{it.isFinite()})
+                    if(frame==6){
+                        assertEquals("No fake/replayed hand on black frame",0,tracker.rawHands)
+                        assertTrue(tracker.latest.get()!!.hands.isEmpty())
+                    }else{
+                        assertTrue("No hand r=$rotation frame=$frame: ${tracker.diagnostic}",tracker.rawHands>0)
+                        val hand=tracker.latest.get()!!.hands.firstOrNull()
+                        assertNotNull("Filter removed real hand",hand)
+                        assertEquals(63,hand!!.points.size)
+                        assertTrue(hand.points.all{it.isFinite()})
+                    }
                 }
+                android.util.Log.i("TrackMR-hands","PASS rotation=$rotation: 6 YUV frames detected real landmarks; black frame=0; ${tracker.modelCheck}")
             }finally{
                 val closed=CountDownLatch(1);tracker.closeAfterDrain{closed.countDown()}
                 assertTrue("Tracker failed to drain",closed.await(30,TimeUnit.SECONDS))
