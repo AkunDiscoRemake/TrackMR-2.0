@@ -1,3 +1,6 @@
+import java.io.InputStream
+import java.net.URI
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
@@ -24,7 +27,7 @@ val fetchHandModel by tasks.registering {
         val cached = rootProject.file(".cache/models/hand_landmarker.task")
         if (cached.exists() && cached.length() > 1_000_000) { cached.copyTo(f, overwrite = true); return@doLast }
         try {
-            java.net.URI(handModelUrl).toURL().openStream().use { input -> f.outputStream().use { input.copyTo(it) } }
+            URI(handModelUrl).toURL().openStream().use { input: InputStream -> f.outputStream().use { out -> input.copyTo(out) } }
             logger.lifecycle("TrackMR: hand_landmarker.task downloaded (${f.length()} bytes)")
         } catch (e: Exception) {
             logger.warn("TrackMR: could not download hand model (${e.message}); hand tracking will be disabled at runtime")
