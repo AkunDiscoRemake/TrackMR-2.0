@@ -1,14 +1,16 @@
-# TRACKMR2.0 · MR-first alpha05
+# TRACKMR2.0 · MR-first alpha06
 
 **Shell espacial Android para celular com lentes Cardboard. Abre diretamente no renderer XR e solicita MR real, sem launcher/menu 2D intermediário.** Não é um sistema pronto equivalente a um headset dedicado.
 
 O projeto preserva o SDK Cardboard, panoramas e ícone do repositório. Não usa recursos proprietários do Quest. Autorizações de câmera/captura, seletor de arquivo, leitor QR e instalação/configurações continuam sendo telas do Android: retire o visor para operá-las com segurança.
 
-## Correção de mãos na alpha05
+## Câmera e mãos na alpha06
 
-**[Baixar alpha05](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36282093962/artifacts/10918324614)** · **[Build alpha05](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36282093962)** · [Defeito encontrado, isolamento ARCore e validação](docs/ALPHA05-HANDS.md).
+**[Baixar alpha06](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36284687600/artifacts/10920341568)** · **[Build + inferência Android aprovados](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36284687600)** · [Correções, evidência e limites](docs/ALPHA06-HANDS.md).
 
-A alpha04 falhou no aparelho do usuário. Foi corrigida a reutilização de Bitmap já reciclado pelo MediaPipe. A primeira abertura desta revisão usa **Camera2 + MediaPipe CPU, sem sessão ARCore**; 6DoF continua opcional em Tracking. Contadores e erros distinguem imagem CPU ausente, falha de inferência, zero mãos e rejeição pelo filtro. Testes automatizados não substituem validação física.
+Após o relato de câmera invertida e mãos sem funcionar na alpha05: separação das transformações OES/YUV, entrada Bitmap com ownership correto, autoteste nativo no aparelho e diagnóstico espacial legível. Primeira abertura desta revisão restaura **mãos/esqueleto ligados, Camera2 + CPU, sem ARCore**; 6DoF continua opcional em Tracking.
+
+O tracker de produção passou em teste Android com MediaPipe ARM64 real via tradução: **24 frames YUV com mãos nas quatro rotações + 4 frames pretos sem mãos**. Isso é mais que compilação/teste de buffer, mas **não substitui teste da câmera e interação no celular do usuário**. Não houve benchmark físico.
 
 Hand Landmarker oficial embutido (7.819.105 bytes), hash fixado e comparação com o asset dentro do APK. Aponte com a mão, faça pinça e segure para arrastar. **Toque físico na tela não seleciona o shell XR.** Não é necessária importação do modelo. [Gestos e input contínuo introduzidos na alpha04](docs/ALPHA04-HANDS.md).
 
@@ -21,7 +23,7 @@ Veja [ALPHA03: mãos, MR, nitidez, UI e Shizuku](docs/ALPHA03.md). Biblioteca em
 | Área | Implementação e limites |
 |---|---|
 | Cardboard | API oficial C/C++, projeção e viewport de cada olho, IPD/perfil, distorção, orientação prevista, QR e recenter. **Não é apenas tela dividida.** |
-| MR na abertura | Camera2 por padrão na alpha05 para isolar mãos. ARCore opcional: câmera real, pose 6DoF, planos, luz e até oito âncoras da sessão. Camera2: passthrough real mono, explicitamente **sem SLAM/6DoF**. Câmera negada/indisponível → espaço espacial neutro, nunca panorama apresentado como MR. VR continua selecionável. |
+| MR na abertura | Camera2 por padrão na alpha06 para isolar mãos. ARCore opcional: câmera real, pose 6DoF, planos, luz e até oito âncoras da sessão. Camera2: passthrough real mono, explicitamente **sem SLAM/6DoF**. Câmera negada/indisponível → espaço espacial neutro, nunca panorama apresentado como MR. VR continua selecionável. |
 | Dock e janelas | 14 destinos com ícones e rótulos no hover; até cinco janelas espaciais, mover, redimensionar por duas mãos, minimizar/reabrir, fechar, fixar, girar, maximizar/restaurar, snap e layout salvo. Layout relativo à sessão não é âncora física persistente. |
 | Mãos | MediaPipe, até duas mãos/21 landmarks cada, CPU por padrão e GPU opcional com fallback CPU, worker exclusivo, um frame em voo, associação temporal, filtros e gestos independentes da UI. Profundidade relativa **não é posição métrica**. Ponteiro com extrapolação limitada; gestos não usam amostras previstas. |
 | Profundidade | Oclusão opcional dos objetos procedurais usando ARCore Depth, somente se suportada; mapeamento UV próprio e expiração de amostra. Não é malha de sala, oclusão das mãos/UI nem calibração validada em hardware. |
@@ -42,8 +44,8 @@ Entrega anterior alpha02 (histórico): [APKs e proveniência](docs/DELIVERY-alph
 
 No GitHub: **Actions → Android • TrackMR 2.0 → execução verde → TrackMR-2.0-debug-arm64**.
 
-- `TrackMR-2.0-alpha05-arm64.apk` — shell MR/VR/Cardboard e cliente OpenXR opcional;
-- `TrackMR-Runtime-Companion-alpha05-arm64.apk` — diagnóstico/Broker e acesso ao cliente;
+- `TrackMR-2.0-alpha06-arm64.apk` — shell MR/VR/Cardboard e cliente OpenXR opcional;
+- `TrackMR-Runtime-Companion-alpha06-arm64.apk` — diagnóstico/Broker e acesso ao cliente;
 - `TrackMR-Dev-API-v1.jar`, `SHA256SUMS.txt`, `SOURCE_REVISION.txt`.
 
 APKs **debug**, não release assinada para loja. Artefatos expiram em 14 dias. O workflow também publica relatórios JVM/lint, compila shaders ESSL e executa testes nativos. Consulte a execução da revisão desejada; a existência do YAML não prova aprovação.

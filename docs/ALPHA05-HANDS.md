@@ -2,6 +2,8 @@
 
 O usuário confirmou que **alpha04 não rastreou mãos no aparelho**. CI verde anterior não contradiz esse relato. Esta revisão corrige um defeito concreto de código e permite investigar a hipótese de conflito com ARCore sem depender de uma mão funcionando para entrar no modo de isolamento.
 
+> **Feedback posterior:** o usuário confirmou que as mãos continuaram sem funcionar e que a câmera estava invertida. Veja a [revisão alpha06](ALPHA06-HANDS.md). O CI desta página não comprova detecção física.
+
 ## Download
 
 **[Baixar alpha05 — APKs e proveniência](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36282093962/artifacts/10918324614)**

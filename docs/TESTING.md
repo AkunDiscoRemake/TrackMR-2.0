@@ -11,7 +11,7 @@
 - Android assemble + lint em CI. CMake compila Cardboard e renderer contra NDK real; runtime liga loader OpenXR real.
 - APKs verificadas com `apksigner`; checksums publicadas junto.
 
-**Build/testes unitários aprovados não substituem teste no celular nem comprovam baixa latência.** Nesta alpha não há teste instrumentado de câmera, frames de referência ou hardware-in-the-loop.
+**Build/testes unitários aprovados não substituem teste no celular nem comprovam baixa latência.** Na alpha06 há teste instrumentado com frames de referência YUV e MediaPipe JNI real em emulador. Ainda não há teste de câmera HAL física ou hardware-in-the-loop.
 
 ## Roteiro manual obrigatório
 
@@ -22,9 +22,9 @@
 | Orientação | Yaw/pitch/roll, recenter, retorno de QR | Mundo estável sem eixo invertido; sem NaN |
 | 360° | Dois ambientes, costura/polos | Imagens certas, foto sem parallax artificial |
 | EGL | Home, bloqueio, rotação, pressão de memória | Recupera render; captura perdida é encerrada com segurança |
-| Jogos | Volume+, botão A, toque; erro na sequência | Pontos respondem e Menu retorna |
+| Jogos | Mãos, Volume+, botão A; erro na sequência | Pontos respondem e Menu retorna |
 | ARCore | Instalação, recusa de câmera, sem suporte, pouca luz | Fallback 3DoF e estado claro, sem crash |
-| Mãos | CPU/GPU, oclusão, mão esquerda/direita, timestamps | Sem fila, sem ponteiro velho >150ms; nenhum gesto após perda |
+| Mãos | CPU/GPU, oclusão, mão esquerda/direita, timestamps | Sem fila, expiração limitada a 150–350 ms conforme processamento; nenhum gesto após perda |
 | Captura | Recusa, um app, tela inteira, resize, sistema encerra | Notificação, stop, correto aspect; sem reutilizar consentimento |
 | Proteção | FLAG_SECURE/DRM | Continua protegido; nunca tentar contornar |
 | Shizuku | Ausente, negado, autorizado, morte do binder | Erro útil, sem promoção silenciosa ou comandos no display 0 |
@@ -69,3 +69,9 @@ Falta executar a matriz física da [alpha03](ALPHA03.md), inclusive tocar cada c
 ## Alpha05
 
 [Defeito, testes e matriz física](ALPHA05-HANDS.md). `:app:testDebugUnitTest` obrigatório no CI: 3 casos Robolectric com containers MediaPipe reais (erro de reciclagem antigo, 200 ciclos de wrapper/buffer, exceção/resize) e 9 casos JVM de saúde CPU/handoff. Não executam inferência nativa nem câmera de aparelho. Primeira correção `162081d`, Actions `36281686717`, aprovada; revisão completa `ce8cfe5` em Actions `36282093962`, aprovada (4m51s). O usuário confirmou falha física na alpha04, apesar do CI anterior aprovado.
+
+## Alpha06 — inferência Android real
+
+`d008b6c` / [Actions 36284687600](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36284687600): jobs de APK/JVM/lint e inferência nativa aprovados. `:tracking-validation:connectedDebugAndroidTest` compila as fontes do tracker do app; recebe imagens reais ImageReader/ImageWriter, converte YUV e executa MediaPipe ARM64 via tradução do emulador API35. Teste: 24 frames de referência positivos, 4 pretos negativos; 0 falhas/erros/ignorados. Autoteste não publica `latest` nem incrementa contadores de câmera. Contrato OES/YUV verificado nas 16 combinações sensor/display; Robolectric verifica ownership e cores dos Bitmaps por frame.
+
+Falhas anteriores no emulador API29/API30 e limite desta evidência estão [registrados na entrega](ALPHA06-HANDS.md). Tempo de emulador não mede performance do celular. Falta validar câmera física, esqueleto alinhado no passthrough, pinch/drag e ARCore no aparelho do usuário.
