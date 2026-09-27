@@ -1,5 +1,7 @@
 # Alpha04 — Hand Landmarker embutido e controle por mãos
 
+> **Superada pela [alpha05](ALPHA05-HANDS.md):** o usuário confirmou falha das mãos. Foi encontrado uso de Bitmap reciclado pelo MediaPipe no caminho de inferência. A aprovação do CI abaixo não comprovava funcionamento físico.
+
 ## Modelo real, incluído no APK
 
 O modelo oficial **MediaPipe Hand Landmarker float16 v1** é baixado no build pelo GitHub Actions. Nenhum download/importação de pesos é necessário no celular; inferência é local/offline após instalar o APK e conceder câmera.

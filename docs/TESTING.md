@@ -65,3 +65,7 @@ Falta executar a matriz física da [alpha03](ALPHA03.md), inclusive tocar cada c
 ## Alpha04
 
 `4ecb024` / Actions `36281125532` aprovado (3m17s), incluindo hash fixado e igualdade byte a byte do Hand Landmarker dentro do APK. Novos testes de sampling YUV, captura de pinça/identidade/perda e fila de input. [Evidência e roteiro físico](ALPHA04-HANDS.md). Sem prova de execução de câmera/input no dispositivo.
+
+## Alpha05
+
+[Defeito, testes e matriz física](ALPHA05-HANDS.md). `:app:testDebugUnitTest` obrigatório no CI: 3 casos Robolectric com containers MediaPipe reais (erro de reciclagem antigo, 200 ciclos de wrapper/buffer, exceção/resize) e 9 casos JVM de saúde CPU/handoff. Não executam inferência nativa nem câmera de aparelho. Primeira correção `162081d`, Actions `36281686717`, aprovada; revisão completa `ce8cfe5` em Actions `36282093962`, aprovada (4m51s). O usuário confirmou falha física na alpha04, apesar do CI anterior aprovado.

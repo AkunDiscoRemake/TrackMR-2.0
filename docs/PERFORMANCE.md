@@ -1,13 +1,13 @@
-# Desempenho e medições · alpha03
+# Desempenho e medições · alpha05
 
 **Sem benchmark em aparelho nesta entrega.** Metas de latência/FPS/potência não são resultados. Shader/teste/build verde não mede uso real de GPU, bateria ou conforto.
 
 ## Implementação atual
 
 - GLSurfaceView com render independente do worker de mãos; framebuffer Cardboard adaptativo, sem alterar ótica física.
-- ARCore `LATEST_CAMERA_IMAGE`; Camera2 fallback. Fonte única compartilhada com inferência, não duas câmeras concorrentes. Modo preencher cobre as viewports com a imagem mono, mas não amplia o FOV físico; depth só no modo óptico.
+- Camera2 por padrão na alpha05; ARCore opcional com `LATEST_CAMERA_IMAGE` e fallback. Fonte única compartilhada com inferência, não duas câmeras concorrentes. Modo preencher cobre as viewports com a imagem mono, mas não amplia o FOV físico; depth só no modo óptico.
 - MediaPipe VIDEO, até duas mãos, CPU padrão/GPU opcional com fallback CPU; inicialização/inferência/close no mesmo worker. Uma reserva em voo, sem fila crescente.
-- YUV downsample em bitmap/array reutilizado; largura/cadência adaptadas (192–512), não aumentar resolução como substituto de filtro/calibração.
+- YUV downsample em buffer RGBA direto reutilizado, wrapper MPImage por inferência síncrona; largura/cadência adaptadas (192–512), não aumentar resolução como substituto de filtro/calibração.
 - Associação de pulsos e handedness como desempate; handedness não é probabilidade de cada joint. One Euro/Kalman/EMA/RAW no domínio, guard de median/outlier e reset temporal. Não empilhar filtros pesados por padrão.
 - Expiração acompanha processamento, entre 150 e 350 ms; limite absoluto evita manter indefinidamente um resultado velho. Essa tolerância não é redução da latência. Previsão do ponteiro limitada a 18 ms, nunca usada para decidir gestos.
 - Dock/janelas instanciados em lote; atlas limitado, upload de tiles só quando mudam. Não há promessa de zero alocações: layout, snapshots, filtros e AR queries ainda geram trabalho/alocações.
@@ -64,3 +64,7 @@ Janelas curvas usam 32 segmentos por instância. Maior legibilidade vem de geome
 ## Alpha04
 
 [Detalhes e testes](ALPHA04-HANDS.md): offsets YUV pré-calculados, liberação da imagem antes da inferência, overlay reutilizado e input de mãos por Binder/fila coalescente. A observação acima sobre processos Shizuku aplica-se ao caminho antigo/botões de recuperação; gestos contínuos não criam processos `input` por movimento. Sem benchmark físico ou percentual de ganho anunciado.
+
+## Alpha05
+
+[Correção de ownership](ALPHA05-HANDS.md): o Bitmap reutilizado anteriormente era reciclado pelo MPImage e podia falhar após o primeiro frame; não deve ser descrito como otimização válida. Buffer RGBA elimina esse uso após reciclagem; o JNI ainda copia para ImageFrame nativo, portanto não é zero-copy. Isolamento Camera2/CPU, contadores por estágio e handoff de câmera foram adicionados para diagnóstico/estabilidade. Ganho físico de performance ainda não medido.
