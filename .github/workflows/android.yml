@@ -75,6 +75,9 @@ jobs:
           cp app/build/outputs/apk/debug/*.apk out/TrackMR-2.0-debug.apk
           cp app/build/outputs/apk/release/*.apk out/TrackMR-2.0-release.apk
           ls -la out
+          # Surface a summary as annotations (readable through the Checks API).
+          for f in out/*.apk; do echo "::notice title=$(basename $f)::$(stat -c%s $f) bytes"; done
+          unzip -l out/TrackMR-2.0-release.apk | awk '{print $1, $4}' | grep -E ' (assets/|lib/)' | grep -vE 'assets/(dexopt|.*\.prof)' | head -40 | while read -r sz name; do echo "::notice title=apk-entry::$name ($sz)"; done
 
       - uses: actions/upload-artifact@v4
         with:

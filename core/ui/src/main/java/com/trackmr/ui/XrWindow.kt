@@ -46,6 +46,18 @@ class XrWindow(
     private val anchorOffset = Pose()
 
     val controls = ControlBar(this)
+
+    /** Extra surfaces glued to the window (toolbars, tab strips). gapM is measured from the content's top edge. */
+    private class Accessory(val surface: SpatialSurface, val gapM: Float)
+    private val accessories = ArrayList<Accessory>()
+
+    fun addAccessoryAbove(surface: SpatialSurface, gapM: Float = 0.02f) {
+        accessories.add(Accessory(surface, gapM))
+        surface.show()
+        if (state == WindowState.NORMAL && attached) { ctx.scene.add(surface); ctx.input.register(surface) }
+        syncChildren()
+    }
+    private var attached = false
     private val tmp = Vec3()
     private val tmp2 = Vec3()
     private val fwd = Vec3()
@@ -61,20 +73,24 @@ class XrWindow(
     val isVisible get() = state == WindowState.NORMAL
 
     fun attach() {
+        attached = true
         ctx.scene.add(content); ctx.input.register(content)
         ctx.scene.add(controls); ctx.input.register(controls)
+        for (a in accessories) { ctx.scene.add(a.surface); ctx.input.register(a.surface) }
     }
 
     fun detach() {
+        attached = false
         ctx.scene.remove(content); ctx.input.unregister(content)
         ctx.scene.remove(controls); ctx.input.unregister(controls)
+        for (a in accessories) { ctx.scene.remove(a.surface); ctx.input.unregister(a.surface) }
         releaseAnchor()
     }
 
     fun minimize() {
         if (state != WindowState.NORMAL) return
         state = WindowState.MINIMIZED
-        content.hide(); controls.hide()
+        content.hide(); controls.hide(); accessories.forEach { it.surface.hide() }
         onMinimize?.invoke(true)
         UiAudio.close()
     }
@@ -82,7 +98,7 @@ class XrWindow(
     fun restore() {
         if (state != WindowState.MINIMIZED) return
         state = WindowState.NORMAL
-        content.show(); controls.show()
+        content.show(); controls.show(); accessories.forEach { it.surface.show() }
         onMinimize?.invoke(false)
         UiAudio.open()
     }
@@ -90,7 +106,7 @@ class XrWindow(
     fun close() {
         if (state == WindowState.CLOSED) return
         state = WindowState.CLOSED
-        content.hide(); controls.hide()
+        content.hide(); controls.hide(); accessories.forEach { it.surface.hide() }
         onClose?.invoke()
         UiAudio.close()
     }
@@ -193,6 +209,12 @@ class XrWindow(
         controls.pose.q.set(pose.q)
         // Tilt the bar slightly toward the eyes.
         controls.pose.q.mul(tiltQ)
+        for (a in accessories) {
+            val s = a.surface
+            pose.transformPoint(0f, h / 2f + a.gapM + s.heightM / 2f, if (content.radius > 0f) 0.03f else 0.01f, s.pose.p)
+            s.pose.q.set(pose.q)
+            if (s.radius > 0f != content.radius > 0f || (content.radius > 0f && kotlin.math.abs(s.radius - content.radius) > 0.01f)) s.setCurvature(content.radius)
+        }
     }
 
     fun beginMove() { releaseAnchor() }
