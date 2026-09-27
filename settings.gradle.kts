@@ -7,3 +7,4 @@ rootProject.name = "TrackMR-2.0"
 include(":app", ":core", ":dev-api", ":runtime", ":cardboard")
 include(":xr", ":handtracking")
 include(":openxr")
+include(":tracking-validation") // CI-only native Android pipeline validation; never a launcher dependency.

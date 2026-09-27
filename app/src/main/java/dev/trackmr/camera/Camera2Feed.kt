@@ -11,7 +11,7 @@ import android.opengl.Matrix
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
-import android.util.Range
+import dev.trackmr.handtracking.CameraOrientation
 import android.view.Surface
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
@@ -50,17 +50,18 @@ class Camera2Feed(private val activity: Activity,private val consumer: CameraCon
             val preview=previewSizes.filter{it.width<=1920&&it.height<=1080&&abs(it.width.toFloat()/it.height-size.width.toFloat()/size.height)<.02f}.minByOrNull{abs(it.width-1280)+abs(it.height-720)} ?: previewSizes.minBy{it.width*it.height}
             clockKnown=c.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE)==CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME
             @Suppress("DEPRECATION") val screen=activity.windowManager.defaultDisplay.rotation*90
-            rotated=((c.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90)-screen+360)%360
+            val sensor=checkNotNull(c.get(CameraCharacteristics.SENSOR_ORIENTATION)){"Sem orientação do sensor"}
+            rotated=CameraOrientation.imageRotation(sensor,screen)
             val physical=c.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
             val focal=c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.firstOrNull()
             val fovy=if(physical!=null&&focal!=null)(2*atan(physical.height/(2*focal))*180/Math.PI).toFloat() else 55f
             val aspect=if(rotated%180==0)size.width.toFloat()/size.height else size.height.toFloat()/size.width
             Matrix.perspectiveM(output.projection,0,fovy.coerceIn(25f,100f),aspect,.05f,100f)
             output.width=size.width;output.height=size.height;output.realtimeClock=clockKnown
-            Matrix.setIdentityM(rotation,0);Matrix.translateM(rotation,0,.5f,.5f,0f);Matrix.rotateM(rotation,0,rotated.toFloat(),0f,0f,1f);Matrix.translateM(rotation,0,-.5f,-.5f,0f)
+            CameraOrientation.displayToSurface(screen).copyInto(rotation)
             this.texture=SurfaceTexture(texture).apply{setDefaultBufferSize(preview.width,preview.height);setOnFrameAvailableListener({fresh.set(true)},handler)}
             surface=Surface(this.texture)
-            val map=when(rotated){90->floatArrayOf(1f,0f,1f,1f,0f,0f);180->floatArrayOf(1f,1f,0f,1f,1f,0f);270->floatArrayOf(0f,1f,0f,0f,1f,1f);else->floatArrayOf(0f,0f,1f,0f,0f,1f)}
+            val map=CameraOrientation.imageToView(sensor,screen)
             reader=ImageReader.newInstance(size.width,size.height,ImageFormat.YUV_420_888,3).apply{
                 setOnImageAvailableListener({ source->
                     if(closing.get())return@setOnImageAvailableListener
@@ -88,12 +89,16 @@ class Camera2Feed(private val activity: Activity,private val consumer: CameraCon
                             try {
                                 val request=camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply{
                                     addTarget(surface!!);addTarget(reader!!.surface)
-                                    set(CaptureRequest.CONTROL_AF_MODE,CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
+                                    val modes=c.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES) ?: intArrayOf(0)
+                                    val af=listOf(CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO,CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE,CaptureRequest.CONTROL_AF_MODE_OFF).firstOrNull{it in modes}
+                                    if(af!=null)set(CaptureRequest.CONTROL_AF_MODE,af)
+                                    if(android.os.Build.VERSION.SDK_INT>=31&&c.get(CameraCharacteristics.SCALER_AVAILABLE_ROTATE_AND_CROP_MODES)?.contains(CaptureRequest.SCALER_ROTATE_AND_CROP_NONE)==true)
+                                        set(CaptureRequest.SCALER_ROTATE_AND_CROP,CaptureRequest.SCALER_ROTATE_AND_CROP_NONE)
                                     set(CaptureRequest.CONTROL_AE_MODE,CaptureRequest.CONTROL_AE_MODE_ON)
                                     val range=c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)?.filter{it.upper<=30}?.maxByOrNull{it.upper*100-it.lower}
                                     if(range!=null)set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,range)
                                 }.build()
-                                session.setRepeatingRequest(request,null,handler);status="Camera2 • passthrough mono • sem SLAM"
+                                session.setRepeatingRequest(request,null,handler);status="Camera2 • sensor $sensor° / tela $screen° / YUV $rotated° • sem SLAM"
                             }catch(e: Exception){status="Camera2 captura: ${e.message}";cameraFailed=true}
                         }
                         override fun onConfigureFailed(session: CameraCaptureSession){status="Camera2: configuração recusada";cameraFailed=true}
