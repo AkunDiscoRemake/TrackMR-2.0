@@ -1,0 +1,19 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+.cxx/
+.externalNativeBuild/
+captures/
+/dist/
+/.cache/
+# Generated at build/CI time
+/app/src/generated/
+/runtime/lua/prebuilt/
+/core/hands/src/main/assets/models/
+/assets-pipeline/work/
+/assets-pipeline/out/
+*.keystore
+*.jks

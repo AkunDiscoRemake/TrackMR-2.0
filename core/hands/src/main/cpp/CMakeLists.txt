@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(trackmr_vision CXX)
+add_library(trackmr_vision SHARED vision_jni.cpp)
+target_compile_options(trackmr_vision PRIVATE -O3 -ffast-math -fno-exceptions -fno-rtti -Wall)
+target_link_options(trackmr_vision PRIVATE "-Wl,-z,max-page-size=16384")
+target_link_libraries(trackmr_vision jnigraphics log)

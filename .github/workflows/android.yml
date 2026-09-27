@@ -1,0 +1,80 @@
+name: Android build
+
+on:
+  push:
+    branches: ["**"]
+    paths-ignore: ["docs/**", "**.md"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "debug | release | both"
+        default: "both"
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      TRACKMR_VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK packages
+        run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1' > /dev/null
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache downloaded models
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: trackmr-cache-${{ hashFiles('core/hands/build.gradle.kts', 'scripts/**') }}
+          restore-keys: trackmr-cache-
+
+      - name: Optional native components (LuaJIT, ALVR client)
+        if: hashFiles('scripts/ci/prepare_native.sh') != ''
+        run: bash scripts/ci/prepare_native.sh
+        continue-on-error: true
+
+      - name: Decode signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.TRACKMR_KEYSTORE_BASE64 }}
+        if: env.KEYSTORE_B64 != ''
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/trackmr.jks"
+          echo "TRACKMR_KEYSTORE=$RUNNER_TEMP/trackmr.jks" >> "$GITHUB_ENV"
+
+      - name: Unit tests
+        run: ./gradlew --stacktrace testDebugUnitTest
+
+      - name: Build APKs
+        env:
+          TRACKMR_KEYSTORE_PASSWORD: ${{ secrets.TRACKMR_KEYSTORE_PASSWORD }}
+          TRACKMR_KEY_ALIAS: ${{ secrets.TRACKMR_KEY_ALIAS }}
+          TRACKMR_KEY_PASSWORD: ${{ secrets.TRACKMR_KEY_PASSWORD }}
+        run: ./gradlew --stacktrace :app:assembleDebug :app:assembleRelease
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/debug/*.apk out/TrackMR-2.0-debug.apk
+          cp app/build/outputs/apk/release/*.apk out/TrackMR-2.0-release.apk
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TrackMR-2.0-apk
+          path: out/*.apk
+          if-no-files-found: error
