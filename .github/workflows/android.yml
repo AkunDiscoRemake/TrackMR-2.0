@@ -46,13 +46,13 @@ jobs:
         run: |
           mkdir -p artifacts
           cp .cache/hand-model-provenance.json artifacts/HAND_MODEL.json
-          cp app/build/outputs/apk/debug/app-debug.apk artifacts/TrackMR-2.0-alpha04-arm64.apk
-          cp runtime/build/outputs/apk/debug/runtime-debug.apk artifacts/TrackMR-Runtime-Companion-alpha04-arm64.apk
+          cp app/build/outputs/apk/debug/app-debug.apk artifacts/TrackMR-2.0-alpha05-arm64.apk
+          cp runtime/build/outputs/apk/debug/runtime-debug.apk artifacts/TrackMR-Runtime-Companion-alpha05-arm64.apk
           cp dev-api/build/libs/dev-api.jar artifacts/TrackMR-Dev-API-v1.jar
           sha256sum artifacts/*.apk artifacts/*.jar > artifacts/SHA256SUMS.txt
           git rev-parse HEAD > artifacts/SOURCE_REVISION.txt
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-2.0-alpha04-arm64.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-Runtime-Companion-alpha04-arm64.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-2.0-alpha05-arm64.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/TrackMR-Runtime-Companion-alpha05-arm64.apk
       - uses: actions/upload-artifact@v4
         with:
           name: TrackMR-2.0-debug-arm64

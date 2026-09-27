@@ -20,11 +20,13 @@ import kotlin.math.atan
 /** Camera2 fallback is real passthrough, NOT SLAM or a palm detector by itself. */
 class Camera2Feed(private val activity: Activity,private val consumer: CameraConsumer?) : CameraFeed {
     override val name="Camera2"
+    override val cpuImages=CpuImageStream()
     @Volatile override var status="Camera2: iniciando";private set
     private val thread=HandlerThread("TrackMR-camera",android.os.Process.THREAD_PRIORITY_DISPLAY).apply{start()}
     private val handler=Handler(thread.looper)
-    private var device: CameraDevice?=null
-    private var capture: CameraCaptureSession?=null
+    @Volatile private var device: CameraDevice?=null
+    @Volatile private var capture: CameraCaptureSession?=null
+    private val openSettled=java.util.concurrent.CountDownLatch(1)
     private var reader: ImageReader?=null
     private var texture: SurfaceTexture?=null
     private var surface: Surface?=null
@@ -61,12 +63,22 @@ class Camera2Feed(private val activity: Activity,private val consumer: CameraCon
             val map=when(rotated){90->floatArrayOf(1f,0f,1f,1f,0f,0f);180->floatArrayOf(1f,1f,0f,1f,1f,0f);270->floatArrayOf(0f,1f,0f,0f,1f,1f);else->floatArrayOf(0f,0f,1f,0f,0f,1f)}
             reader=ImageReader.newInstance(size.width,size.height,ImageFormat.YUV_420_888,3).apply{
                 setOnImageAvailableListener({ source->
-                    val image=runCatching{source.acquireLatestImage()}.getOrNull() ?: return@setOnImageAvailableListener
-                    if(!closing.get()&&consumer?.reserve(SystemClock.elapsedRealtimeNanos())==true)consumer.submit(image,map,clockKnown) else image.close()
+                    if(closing.get())return@setOnImageAvailableListener
+                    cpuImages.attempt(SystemClock.elapsedRealtimeNanos())
+                    val image=try{source.acquireLatestImage()}catch(e: Exception){
+                        if(!closing.get()){cpuImages.failed(e);android.util.Log.e("TrackMR-camera","Camera2 CPU image",e)}
+                        null
+                    }
+                    if(image==null){cpuImages.unavailable();return@setOnImageAvailableListener}
+                    if(!closing.get()&&consumer?.reserve(SystemClock.elapsedRealtimeNanos())==true){
+                        try{consumer.submit(image,map,clockKnown);cpuImages.delivered(SystemClock.elapsedRealtimeNanos())}
+                        catch(e: Exception){image.close();consumer.cancelReservation();cpuImages.failed(e);android.util.Log.e("TrackMR-camera","Camera2 submit",e)}
+                    }else image.close()
                 },handler)
             }
             manager.openCamera(id,object: CameraDevice.StateCallback(){
                 override fun onOpened(camera: CameraDevice){
+                    try{
                     if(closing.get()){camera.close();return};device=camera
                     try {
                     @Suppress("DEPRECATION")
@@ -87,12 +99,13 @@ class Camera2Feed(private val activity: Activity,private val consumer: CameraCon
                         override fun onConfigureFailed(session: CameraCaptureSession){status="Camera2: configuração recusada";cameraFailed=true}
                     },handler)
                     }catch(e: Exception){status="Camera2 sessão: ${e.message}";cameraFailed=true;camera.close()}
+                    }finally{openSettled.countDown()}
                 }
-                override fun onDisconnected(camera: CameraDevice){camera.close();status="Camera2 desconectada";cameraFailed=true}
-                override fun onError(camera: CameraDevice,code: Int){camera.close();status="Camera2 erro $code";cameraFailed=true}
+                override fun onDisconnected(camera: CameraDevice){try{camera.close();status="Camera2 desconectada";cameraFailed=true}finally{openSettled.countDown()}}
+                override fun onError(camera: CameraDevice,code: Int){try{camera.close();status="Camera2 erro $code";cameraFailed=true}finally{openSettled.countDown()}}
             },handler)
             true
-        }catch(e: Exception){status="Camera2: ${e.javaClass.simpleName}: ${e.message}";cameraFailed=true;false}
+        }catch(e: Exception){openSettled.countDown();status="Camera2: ${e.javaClass.simpleName}: ${e.message}";cameraFailed=true;false}
     }
     override fun frame(width: Int,height: Int): CameraFrame {
         if(fresh.getAndSet(false)&&!closing.get()) {
@@ -104,5 +117,11 @@ class Camera2Feed(private val activity: Activity,private val consumer: CameraCon
         return output
     }
     override fun pause(){closing.set(true);output.active=false;capture?.close();device?.close()}
-    override fun close(){pause();reader?.close();surface?.release();texture?.release();thread.quitSafely()}
+    override fun close(){
+        pause()
+        // Called on release worker, never GL/UI. Keep callback thread alive for an in-flight open.
+        check(openSettled.await(5,java.util.concurrent.TimeUnit.SECONDS)){"Camera2 open ainda pendente; nova câmera bloqueada"}
+        pause() // onOpened may have assigned device after the first pause.
+        reader?.close();surface?.release();texture?.release();thread.quitSafely()
+    }
 }

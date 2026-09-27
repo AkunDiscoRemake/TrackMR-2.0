@@ -10,6 +10,8 @@ import java.nio.ByteOrder
 /** Single owner for passthrough, SLAM, plane detection and inference camera images. */
 class ArCameraFeed(private val activity: Activity,private val consumer: CameraConsumer?,private val useDepth: Boolean=false) : CameraFeed {
     override val name="ARCore"
+    override val cpuImages=CpuImageStream()
+    private var lastCpuTimestamp=0L
     override var status="ARCore: iniciando";private set
     private var session: Session?=null
     private val output=CameraFrame()
@@ -76,13 +78,23 @@ class ArCameraFeed(private val activity: Activity,private val consumer: CameraCo
                 output.depthTransform[4]=transformed.get(4)-x;output.depthTransform[5]=transformed.get(5)-y
                 output.depthTransform[12]=x;output.depthTransform[13]=y
             }
-            if(consumer?.reserve(SystemClock.elapsedRealtimeNanos())==true){
+            if(f.timestamp>0&&f.timestamp!=lastCpuTimestamp&&consumer?.reserve(SystemClock.elapsedRealtimeNanos())==true){
+                cpuImages.attempt(SystemClock.elapsedRealtimeNanos())
+                var image: android.media.Image?=null
+                var submitted=false
                 try{
                     coordinates.rewind();coordinates.put(imageCorners).rewind();transformed.rewind()
                     f.transformCoordinates2d(Coordinates2d.IMAGE_NORMALIZED,coordinates,Coordinates2d.VIEW_NORMALIZED,transformed)
                     val map=FloatArray(6);transformed.rewind();transformed.get(map)
-                    consumer.submit(f.acquireCameraImage(),map,cameraClockKnown)
-                }catch(_: Exception){consumer.cancelReservation()}
+                    image=f.acquireCameraImage()
+                    consumer.submit(image,map,cameraClockKnown)
+                    image=null;submitted=true;lastCpuTimestamp=f.timestamp
+                    cpuImages.delivered(SystemClock.elapsedRealtimeNanos())
+                }catch(_: com.google.ar.core.exceptions.NotYetAvailableException){cpuImages.unavailable()}
+                catch(e: Exception){
+                    cpuImages.failed(e)
+                    if(cpuImages.errors.get()<=3||cpuImages.errors.get()%60L==0L)android.util.Log.e("TrackMR-camera","ARCore CPU image",e)
+                }finally{image?.close();if(!submitted)consumer.cancelReservation()}
             }
             output.tracking=f.camera.trackingState==TrackingState.TRACKING
             if(output.tracking){

@@ -28,6 +28,7 @@ class CameraFrame {
 }
 interface CameraFeed : AutoCloseable {
     val name: String
+    val cpuImages: CpuImageStream
     val status: String
     fun start(texture: Int,width: Int,height: Int): Boolean // GL thread, permission already granted
     fun frame(width: Int,height: Int): CameraFrame

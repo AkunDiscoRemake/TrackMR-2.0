@@ -86,7 +86,9 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
     private var scene=0;private var score=0
     private var cameraStarted=0L
     private var cameraAllowed=true
-    private var preferCamera2=false
+    private var preferCamera2=false // automatic fallback for this session, not the saved user choice
+    private val cameraHandoff=CameraHandoff()
+    private var cameraFallbackReason="nenhum"
     private var battery=100
     private var safeMode=false
     private var failed=false
@@ -146,6 +148,8 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
     }
     override fun onCreate(state: Bundle?){
         super.onCreate(state)
+        // One-time alpha05 isolation default; subsequent explicit CPU/GPU/ARCore choices persist.
+        if(!prefs.getBoolean("handIsolationV1",false))prefs.edit().putBoolean("handIsolationV1",true).putBoolean("cameraArCore",false).putBoolean("handsGpu",false).apply()
         cardboardContext=CardboardContext.from(this);shizuku=ShizukuBridge(this)
         assistant=LocalAssistant(applicationContext){notify(it.take(160))};audio=SpatialAudio(applicationContext)
         if(prefs.getInt("uiVersion",0)<3)prefs.edit().putInt("uiVersion",3).remove("spatialLayout").remove("dockY").putString("quality","QUALITY").apply()
@@ -193,10 +197,12 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         val needsCamera=experience.requested!=Experience.VR||prefs.getBoolean("hands",true)
         if(!needsCamera)return
         if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){experience.camera(CameraState.DENIED,"Autorize a câmera em Sistema");return}
+        if(!cameraHandoff.requestStart())return
         hands=if(prefs.getBoolean("hands",true))HandTracker(applicationContext,prefs.getBoolean("handsGpu",false))else null
-        val primary=ArCameraFeed(this,hands,prefs.getBoolean("depth",false))
-        feed=if(!preferCamera2&&primary.start(textures[3],(width/2).coerceAtLeast(1),height)){primary}else{
-            notify(primary.status);primary.close()
+        // Do not even construct an ARCore session in isolation mode.
+        val primary=if(prefs.getBoolean("cameraArCore",false)&&!preferCamera2)ArCameraFeed(this,hands,prefs.getBoolean("depth",false))else null
+        feed=if(primary!=null&&primary.start(textures[3],(width/2).coerceAtLeast(1),height)){primary}else{
+            if(primary!=null){cameraFallbackReason=primary.status;notify(primary.status);primary.close()}
             Camera2Feed(this,hands).also{if(!it.start(textures[3],(width/2).coerceAtLeast(1),height))notify(it.status,true)}
         }
         cameraStarted=SystemClock.elapsedRealtimeNanos();experience.camera(CameraState.STARTING,feed!!.status)
@@ -204,8 +210,20 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
     private fun stopCamera(){
         handInput.cancel().forEach{dispatchHand(it)}
         val oldFeed=feed;val oldHands=hands;feed=null;hands=null;cameraFrame=null
-        oldFeed?.pause()
-        if(oldHands!=null)oldHands.closeAfterDrain{oldFeed?.close()}else oldFeed?.close()
+        cameraHandoff.cancelPending()
+        if(oldFeed!=null||oldHands!=null){
+            cameraHandoff.beginClose()
+            runCatching{oldFeed?.pause()}.onFailure{android.util.Log.e("TrackMR-camera","Pause failed",it)}
+            val release: ()->Unit={
+                val result=runCatching{oldFeed?.close()}
+                view.queueEvent{
+                    val restart=cameraHandoff.finishClose(result.isSuccess)
+                    if(result.isFailure)notify("Falha ao liberar câmera; reinicie o app: ${result.exceptionOrNull()?.message}",true)
+                    else if(restart)startCamera()
+                }
+            }
+            if(oldHands!=null)oldHands.closeAfterDrain(release)else io.execute{release()}
+        }
         experience.camera(CameraState.STOPPED,"Câmera desligada")
     }
     override fun onSurfaceCreated(gl: GL10?,config: EGLConfig?){
@@ -238,8 +256,13 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
             lastFrameMs=dt*1000;previousNs=start;stats.add(lastFrameMs)
             cameraFrame=feed?.frame((width/2).coerceAtLeast(1),height)
             var frame=cameraFrame
-            if(feed is ArCameraFeed&&frame?.active!=true&&start-cameraStarted>2_000_000_000){
-                notify("ARCore sem imagens: alternando para Camera2",true);stopCamera();preferCamera2=true;startCamera();frame=null
+            val arFeed=feed as? ArCameraFeed
+            val missingCpu=arFeed!=null&&hands?.available==true&&hands?.enabled==true&&arFeed.cpuImages.stalled(start,cameraStarted)
+            if(arFeed!=null&&((frame?.active!=true&&start-cameraStarted>2_000_000_000)||missingCpu)){
+                cameraFallbackReason=if(missingCpu)"ARCore sem imagens CPU: ${arFeed.cpuImages.description()} • ${arFeed.cpuImages.lastError ?: "NotYetAvailable"}"else arFeed.status
+                android.util.Log.w("TrackMR-camera",cameraFallbackReason)
+                notify("${if(missingCpu)"ARCore sem imagens para mãos" else "ARCore sem preview"}: Camera2",true)
+                stopCamera();preferCamera2=true;startCamera();frame=null
             }
             if(frame?.active==true)experience.camera(CameraState.ACTIVE,feed!!.status)
             else if(feed!=null&&start-cameraStarted>5_000_000_000)experience.camera(CameraState.ERROR,feed!!.status)
@@ -281,7 +304,7 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
                 battery=getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                 shell.cameraActive=frame?.active==true
                 shell.headline=when(experience.active){Experience.MR->"MR • CÂMERA ATIVA";Experience.VR->"VR • ${if(shell.cameraActive)"CÂMERA: MÃOS" else "CÂMERA DESLIGADA"}";else->"MR INDISPONÍVEL • ESPAÇO SEGURO"}
-                shell.detail=if(frame?.active==true)"${feed?.name} • ${if(frame.tracking)"6DoF" else "3DoF"} • ${if(sample!=null){if(sample.confidence<.6f)"mão: aumente a iluminação" else "mão: abra e faça pinça"}else "mostre a mão aberta à câmera"}" else experience.reason
+                shell.detail=if(frame?.active==true)"${feed?.name} ${if(frame.tracking)"6DoF" else "3DoF"} • YUV ${feed?.cpuImages?.delivered?.get() ?: 0} • ${hands?.hint(start) ?: "mãos desligadas"}" else experience.reason
                 gpuMs=NativeBridge.gpuTime(handle)
                 advisedScale=if(prefs.getBoolean("neural",false))neural?.advise(stats.percentile(.5f),batch?.inferenceMs ?: 0f,thermal,battery/100f,q.renderScale) ?: q.renderScale else q.renderScale
                 if(appWindow!=null)shell.windows.windows.find{it.kind==WindowKind.ANDROID_APP}?.let{w->
@@ -377,11 +400,11 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
         shell.pages[WindowKind.ASSISTANT]=listOf(action(if(assistant.busy.get())"Processando localmente" else "Nova pergunta",!assistant.busy.get()){shell.keyboard{question->assistant.ask(question)}},action("Importar modelo",!assistant.busy.get()){main{importTarget="assistant";importDocument.launch(arrayOf("*/*"))}},action("Ler próxima parte"){assistantPage=if(assistantPage+1>=answer.size)0 else assistantPage+1;refreshPages()},info("${assistantPage+1}/${answer.size.coerceAtLeast(1)} • sem nuvem"))+answer.drop(assistantPage).take(4).map{info(it.chunked(22).joinToString("\n"))}
         shell.pages[WindowKind.ANDROID_APP]=listOf(action("Voltar"){main{appWindow?.back()}},action("Teclado"){shell.keyboard{value->main{appWindow?.text(value)}}},action("Curva / plana"){shell.curvedContent=!shell.curvedContent},action("Parar"){main{stopContent()};shell.surfaceKind=null})
         shell.pages[WindowKind.CAPTURE]=listOf(action("Compartilhar um app"){main{stopContent();captureConsent.launch(getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent())}},action("Parar captura"){main{stopContent()};shell.surfaceKind=null},action("Conectar Shizuku"){main{shizuku.requestOrBind()}},info("${shizuku.status()}"),info("Compartilhamento: só visual\nJanela Shizuku: pinça e arraste"),action("Abrir Shizuku"){main{val intent=packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api");if(intent!=null)startActivity(intent)else Catalog.openLink(this,"https://shizuku.rikka.app/")}},action("Depuração sem fio"){main{startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))}})
-        shell.pages[WindowKind.TRACKING]=listOf(info(hands?.status ?: "Mãos desligadas"),action(if(prefs.getBoolean("hands",true))"Desligar mãos" else "Ligar mãos"){prefs.edit().putBoolean("hands",!prefs.getBoolean("hands",true)).apply();safeMode=false;stopCamera();startCamera()},info("Planos: ${cameraFrame?.planes ?: 0}\nÂncoras: ${cameraFrame?.anchors ?: 0}"),action(if(prefs.getBoolean("depth",false))"Desligar oclusão depth" else "Oclusão depth opcional",cameraFrame?.depthAvailable==true){prefs.edit().putBoolean("depth",!prefs.getBoolean("depth",false)).apply();stopCamera();startCamera()},action("Reconectar câmera"){cameraAllowed=true;preferCamera2=false;stopCamera();startCamera()},action(if(prefs.getBoolean("handsGpu",false))"Backend: GPU → CPU" else "Backend: CPU → GPU"){prefs.edit().putBoolean("handsGpu",!prefs.getBoolean("handsGpu",false)).apply();stopCamera();startCamera()},action(if(prefs.getBoolean("handOverlay",true))"Ocultar esqueleto" else "Mostrar esqueleto"){prefs.edit().putBoolean("handOverlay",!prefs.getBoolean("handOverlay",true)).apply()})
+        shell.pages[WindowKind.TRACKING]=listOf(info(hands?.status ?: "Mãos desligadas"),action(if(prefs.getBoolean("hands",true))"Desligar mãos" else "Ligar mãos"){prefs.edit().putBoolean("hands",!prefs.getBoolean("hands",true)).apply();safeMode=false;stopCamera();startCamera()},action(if(prefs.getBoolean("cameraArCore",false))"Isolar mãos: Camera2\nSem ARCore / 3DoF" else "Ativar ARCore 6DoF\nSair do isolamento"){prefs.edit().putBoolean("cameraArCore",!prefs.getBoolean("cameraArCore",false)).apply();preferCamera2=false;cameraFallbackReason="nenhum";stopCamera();startCamera()},action(if(prefs.getBoolean("depth",false))"Desligar oclusão depth" else "Oclusão depth opcional",cameraFrame?.depthAvailable==true){prefs.edit().putBoolean("depth",!prefs.getBoolean("depth",false)).apply();stopCamera();startCamera()},action("Reconectar câmera"){cameraAllowed=true;preferCamera2=false;cameraFallbackReason="nenhum";stopCamera();startCamera()},action(if(prefs.getBoolean("handsGpu",false))"Backend: GPU → CPU" else "Backend: CPU → GPU"){prefs.edit().putBoolean("handsGpu",!prefs.getBoolean("handsGpu",false)).apply();stopCamera();startCamera()},action(if(prefs.getBoolean("handOverlay",true))"Ocultar esqueleto" else "Mostrar esqueleto"){prefs.edit().putBoolean("handOverlay",!prefs.getBoolean("handOverlay",true)).apply()},info("${feed?.cpuImages?.description() ?: "Sem câmera"}\nInfer ${hands?.completed?.get() ?: 0} • falhas ${hands?.failedFrames?.get() ?: 0}\nBrutas ${hands?.rawHands ?: 0} • filtradas ${hands?.filteredHands ?: 0}"))
         val sample=hands?.latest?.get();val ram=ActivityManager.MemoryInfo().also{getSystemService(ActivityManager::class.java).getMemoryInfo(it)}
-        shell.pages[WindowKind.DIAGNOSTICS]=listOf(info("p95 ${"%.1f".format(stats.percentile(.95f))} ms\n${"%.0f".format(1000/lastFrameMs.coerceAtLeast(1f))} callbacks/s"),info("CPU frame ${"%.1f".format(renderMs)} ms\nGPU ${if(gpuMs<0)"N/D" else "%.1f ms".format(gpuMs)}"),info("Inferência ${sample?.inferenceMs?.let{"%.1f".format(it)} ?: "—"} ms\nFiltro ${sample?.filterMs?.let{"%.1f".format(it)} ?: "—"} ms"),info("Térmico $thermal\nEscala ${"%.0f".format(quality.quality.renderScale*100)}%"),info("RAM livre ${ram.availMem/1048576} MiB\nE2E: requer medição externa"),info("${width}×$height\n${"%.0f".format(1000/targetMs)} Hz"),info("Frames de câmera pulados\n${hands?.dropped?.get() ?: 0}"),info("Pré ${sample?.preprocessMs?.let{"%.1f".format(it)} ?: "—"} ms\nChegada ${if(sample?.clockKnown==true)((sample.receivedNs-sample.sensorTimestampNs)/1e6).toInt().toString()+" ms" else "N/D"}"))
+        shell.pages[WindowKind.DIAGNOSTICS]=listOf(info("p95 ${"%.1f".format(stats.percentile(.95f))} ms\n${"%.0f".format(1000/lastFrameMs.coerceAtLeast(1f))} callbacks/s"),info("CPU frame ${"%.1f".format(renderMs)} ms\nGPU ${if(gpuMs<0)"N/D" else "%.1f ms".format(gpuMs)}"),info("Inferência ${sample?.inferenceMs?.let{"%.1f".format(it)} ?: "—"} ms\nFiltro ${sample?.filterMs?.let{"%.1f".format(it)} ?: "—"} ms"),info("Térmico $thermal\nEscala ${"%.0f".format(quality.quality.renderScale*100)}%"),info("RAM livre ${ram.availMem/1048576} MiB\nE2E: requer medição externa"),info("${width}×$height\n${"%.0f".format(1000/targetMs)} Hz"),info("${feed?.cpuImages?.description() ?: "Sem câmera"}\nBrutas ${hands?.rawHands ?: 0} • filtradas ${hands?.filteredHands ?: 0}"),info("Pré ${sample?.preprocessMs?.let{"%.1f".format(it)} ?: "—"} ms\nChegada ${if(sample?.clockKnown==true)((sample.receivedNs-sample.sensorTimestampNs)/1e6).toInt().toString()+" ms" else "N/D"}"))
         shell.pages[WindowKind.NOTIFICATIONS]=notices.snapshot().takeLast(8).reversed().map{info((if(it.error)"ERRO\n" else "")+it.message)}.ifEmpty{listOf(info("Sem notificações"))}
-        val diagnostic="TRACKMR ${dev.trackmr.BuildConfig.VERSION_NAME}\n${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\nCâmera: ${feed?.status ?: "desligada"}\nMãos: ${hands?.status ?: "desligadas"}\nHand Landmarker no APK: ${hands?.modelBytes ?: 0} bytes\nPré/infer/filtro: ${sample?.preprocessMs}/${sample?.inferenceMs}/${sample?.filterMs} ms\nIdade local: ${sample?.let{(SystemClock.elapsedRealtimeNanos()-it.timestampNs)/1_000_000}} ms\nTérmica: $thermal, framebuffer: ${width}x${height} × ${quality.quality.renderScale}\nShizuku: ${shizuku.status()}"
+        val diagnostic="TRACKMR ${dev.trackmr.BuildConfig.VERSION_NAME}\n${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\nCâmera: ${feed?.status ?: "desligada"}\nMãos: ${hands?.status ?: "desligadas"}\n${hands?.diagnostic}\n${feed?.cpuImages?.description()}\nErro de aquisição: ${feed?.cpuImages?.lastError ?: "nenhum"}\nFallback: $cameraFallbackReason\nPlanos ${cameraFrame?.planes ?: 0}, âncoras ${cameraFrame?.anchors ?: 0}\nHand Landmarker no APK: ${hands?.modelBytes ?: 0} bytes\nPré/infer/filtro: ${sample?.preprocessMs}/${sample?.inferenceMs}/${sample?.filterMs} ms\nIdade local: ${sample?.let{(SystemClock.elapsedRealtimeNanos()-it.timestampNs)/1_000_000}} ms\nTérmica: $thermal, framebuffer: ${width}x${height} × ${quality.quality.renderScale}\nShizuku: ${shizuku.status()}"
         shell.pages[WindowKind.SYSTEM]=listOf(action("Autorizar câmera"){main{cameraPermission.launch(Manifest.permission.CAMERA)}},action("Desligar câmera"){cameraAllowed=false;stopCamera();experience.camera(CameraState.STOPPED,"Câmera desligada pelo usuário")},action(if(SystemClock.elapsedRealtimeNanos()<screenshotConfirmUntil)"CONFIRMAR screenshot" else "Screenshot (inclui MR)"){
             val now=SystemClock.elapsedRealtimeNanos();if(now<screenshotConfirmUntil){screenshotConfirmUntil=0;main{SpatialScreenshot.capture(this,view,io){notify(it)}}}else{screenshotConfirmUntil=now+5_000_000_000;notify("A imagem incluirá o passthrough. Toque de novo em até 5 s para confirmar.");refreshPages()}
         },action("Sessão OpenXR real"){main{openXrSession.launch(Intent(this,dev.trackmr.openxr.SessionActivity::class.java))}},action("Configuração do app"){main{startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName")))}},action("Sair com segurança"){shell.save();main{finish()}},action(if(prefs.getBoolean("fillMr",true))"MR: preencher → óptico" else "MR: óptico → preencher"){prefs.edit().putBoolean("fillMr",!prefs.getBoolean("fillMr",true)).apply();notify("Preencher amplia a câmera para cada olho, sem adicionar campo de visão real. Depth exige modo óptico.")},action("Copiar diagnóstico"){main{getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("TrackMR diagnóstico",diagnostic));notify("Diagnóstico copiado, sem imagens ou landmarks")}})

@@ -23,6 +23,24 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
     override val available get()=kind!=BackendKind.NONE
     val status get()=if(!enabled)"Mãos pausadas pelo limite térmico" else error ?: "${kind.name} • ${latest.get()?.hands?.size ?: 0} mãos • ${completed.get()} frames"
     val completed=AtomicLong(0)
+    val received=AtomicLong(0)
+    val failedFrames=AtomicLong(0)
+    @Volatile var stage="carregando modelo";private set
+    @Volatile var rawHands=0;private set
+    @Volatile var filteredHands=0;private set
+    @Volatile var inputDescription="sem imagem";private set
+    val diagnostic get()="Recebidas ${received.get()} • inferências ${completed.get()} • falhas ${failedFrames.get()}\nBrutas $rawHands • filtradas $filteredHands • $stage\n$inputDescription"
+    fun hint(now: Long): String = when {
+        !enabled->"Mãos pausadas: temperatura"
+        error!=null->error!!
+        !available->"Mãos: $stage"
+        received.get()==0L->"Mãos: aguardando imagem CPU"
+        completed.get()==0L->"Mãos: $stage"
+        latest.get()?.let{!SampleFreshness.usable(now-it.timestampNs,it.preprocessMs+it.inferenceMs+it.filterMs)}!=false->"Mãos: resultado expirado • $stage"
+        rawHands==0->"Inferência OK • nenhuma mão detectada"
+        filteredHands==0->"$rawHands detectadas • rejeitadas pelo filtro"
+        else->"Mãos $filteredHands • inferências ${completed.get()}"
+    }
     @Volatile var intervalMs=33L
     @Volatile var inputWidth=384
     @Volatile var enabled=true
@@ -55,7 +73,7 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
                 .setBaseOptions(BaseOptions.builder().setModelAssetPath("hand_landmarker.task").setDelegate(delegate).build())
                 .setNumHands(2).setRunningMode(RunningMode.VIDEO).setMinHandDetectionConfidence(.5f)
                 .setMinHandPresenceConfidence(.5f).setMinTrackingConfidence(.5f).build())
-            kind=if(gpu)BackendKind.MEDIAPIPE_GPU else BackendKind.MEDIAPIPE_CPU;error=null;failures=0
+            kind=if(gpu)BackendKind.MEDIAPIPE_GPU else BackendKind.MEDIAPIPE_CPU;error=null;failures=0;stage="aguardando imagem"
         }catch(e: Exception){android.util.Log.e("TrackMR-hands","Backend initialization failed",e);if(gpu)initialize(false) else {kind=BackendKind.NONE;error="MediaPipe indisponível: ${e.javaClass.simpleName}: ${e.message}"}}
     }
     @Synchronized override fun reserve(nowNs: Long): Boolean {
@@ -66,7 +84,9 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
     @Synchronized override fun submit(image: Image,viewTransform: FloatArray,clockKnown: Boolean){
         val received=SystemClock.elapsedRealtimeNanos()
         if(closed.get()){image.close();busy.set(false);return}
+        this.received.incrementAndGet()
         worker.execute{
+            stage="pré-processamento"
             val capture=received // local acquisition clock for expiry; sensor clock only for diagnostics
             var imageClosed=false
             try{
@@ -84,7 +104,9 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
                 val preMs=(SystemClock.elapsedRealtimeNanos()-preStart)/1e6f
                 val inferStart=SystemClock.elapsedRealtimeNanos()
                 val stamp=maxOf(capture/1_000_000,lastModelTimestamp+1);lastModelTimestamp=stamp
+                stage="inferência"
                 val result=inputImage.withImage{model.detectForVideo(it,stamp)}
+                rawHands=result.landmarks().size;stage="filtro"
                 val inferMs=(SystemClock.elapsedRealtimeNanos()-inferStart)/1e6f
                 val filterStart=SystemClock.elapsedRealtimeNanos()
                 val observations=result.landmarks().mapIndexed { index,points->
@@ -107,8 +129,9 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
                 }}
                 events+=twoHands.update(filtered.getOrNull(0),filtered.getOrNull(1))
                 latest.set(Batch(filtered,events,capture,received,sensorTimestamp,preMs,inferMs,(SystemClock.elapsedRealtimeNanos()-filterStart)/1e6f,clockKnown))
+                filteredHands=filtered.size;stage="aguardando imagem"
                 failures=0;error=null;completed.incrementAndGet()
-            }catch(e: Exception){latest.set(null);error="Tracking: ${e.javaClass.simpleName}: ${e.message}";android.util.Log.e("TrackMR-hands",error,e);if(++failures>=3&&kind==BackendKind.MEDIAPIPE_GPU)initialize(false)}
+            }catch(e: Exception){failedFrames.incrementAndGet();latest.set(null);error="Tracking: ${e.javaClass.simpleName}: ${e.message}";android.util.Log.e("TrackMR-hands",error,e);if(++failures>=3&&kind==BackendKind.MEDIAPIPE_GPU)initialize(false)}
             finally{if(!imageClosed)image.close();busy.set(false)}
         }
     }
@@ -121,6 +144,7 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
         if(p==null||p.left!=crop.left||p.top!=crop.top||p.sourceWidth!=crop.width()||p.sourceHeight!=crop.height()||p.targetWidth!=requested||p.rotation!=rotation||
             p.yStride!=yp.rowStride||p.yPixel!=yp.pixelStride||p.uStride!=up.rowStride||p.uPixel!=up.pixelStride||p.vStride!=vp.rowStride||p.vPixel!=vp.pixelStride){
             p=YuvSamplingPlan(crop.left,crop.top,crop.width(),crop.height(),requested,rotation,yp.rowStride,yp.pixelStride,up.rowStride,up.pixelStride,vp.rowStride,vp.pixelStride);plan=p
+            inputDescription="${image.width}×${image.height} → ${p.width}×${p.height} RGBA • rotação $rotation°"
         }
         val width=p.width;val height=p.height
         val pixels=inputImage.prepare(width,height)
