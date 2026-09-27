@@ -21,6 +21,7 @@ class SpatialShell(private val prefs: SharedPreferences,val atlas: SpatialAtlas)
     var cameraActive=false
     var headline="TRACKMR • INICIANDO MR"
     var detail="Câmera ainda não disponível"
+    var handHealth=listOf("Câmera", "Modelo", "Mãos")
     var onDock: (DockItem)->Unit={}
     var surfaceKind: WindowKind?=null
     var keyboardText="";private set
@@ -93,7 +94,10 @@ class SpatialShell(private val prefs: SharedPreferences,val atlas: SpatialAtlas)
             listOf("ESPAÇO","APAGAR","ENVIAR","FECHAR").forEachIndexed{i,t->add(9100+i,atlas.tile("keyboard-$i",t,aspect=.26f/.09f),(i-1.5f)*.28f,-.36f,-1.14f,.26f,.09f,0f,.97f,if(hovered==9100+i)1f else 0f,.22f,.18f,.4f)}
         }
         add(0,atlas.tile("headline",headline,aspect=12f),0f,1.03f,-2.3f,1.68f,.14f,0f,.94f,0f,.04f,if(cameraActive).25f else .08f,.16f)
-        add(0,atlas.tile("detail",detail,aspect=12f),0f,.90f,-2.3f,1.68f,.14f,0f,.9f,0f,.07f,.09f,.16f)
+        // Three independent tiles: never squeeze the whole failure report into 256 pixels.
+        handHealth.take(3).forEachIndexed{i,text->
+            add(0,atlas.tile("hand-health-$i",text,aspect=2.4f),(i-1)*.58f,.80f,-2.3f,.56f,.233f,0f,.94f,0f,.07f,.09f,.16f)
+        }
     }
     private fun add(id: Int,tile: Int,x: Float,y: Float,z: Float,w: Float,h: Float,yaw: Float,opacity: Float,hover: Float,r: Float,g: Float,b: Float,kind: Int=0,selected: Float=0f){
         if(count>=SpatialBudget.PACKET_ITEMS)return

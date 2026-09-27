@@ -267,13 +267,14 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
             if(frame?.active==true)experience.camera(CameraState.ACTIVE,feed!!.status)
             else if(feed!=null&&start-cameraStarted>5_000_000_000)experience.camera(CameraState.ERROR,feed!!.status)
             val batch=hands?.latest?.get()
-            val sample=batch?.let{primaryHand.choose(it.hands)}?.takeIf{SampleFreshness.usable(start-it.timestampNs,batch.preprocessMs+batch.inferenceMs+batch.filterMs)}
+            val sampleNow=SystemClock.elapsedRealtimeNanos() // read AFTER snapshot, not before camera update
+            val sample=batch?.let{primaryHand.choose(it.hands)}?.takeIf{SampleFreshness.usable(sampleNow-it.timestampNs,batch.preprocessMs+batch.inferenceMs+batch.filterMs)}
             var px=.5f;var py=.5f
             if(sample!=null){
                 val p=sample.points
                 val palm=kotlin.math.hypot(p[15]-p[51],p[16]-p[52])
                 val closing=palm>.025f&&kotlin.math.hypot(p[12]-p[24],p[13]-p[25])/palm<.5f
-                val prediction=if(closing||handInput.pressed)0f else minOf((start-sample.timestampNs)/1e9f,.018f)
+                val prediction=if(closing||handInput.pressed)0f else minOf((sampleNow-sample.timestampNs)/1e9f,.018f)
                 px=(p[24]+sample.velocity[24]*prediction).coerceIn(0f,1f);py=(p[25]+sample.velocity[25]*prediction).coerceIn(0f,1f)
             }
             val fillMr=prefs.getBoolean("fillMr",true)
@@ -305,6 +306,13 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
                 shell.cameraActive=frame?.active==true
                 shell.headline=when(experience.active){Experience.MR->"MR • CÂMERA ATIVA";Experience.VR->"VR • ${if(shell.cameraActive)"CÂMERA: MÃOS" else "CÂMERA DESLIGADA"}";else->"MR INDISPONÍVEL • ESPAÇO SEGURO"}
                 shell.detail=if(frame?.active==true)"${feed?.name} ${if(frame.tracking)"6DoF" else "3DoF"} • YUV ${feed?.cpuImages?.delivered?.get() ?: 0} • ${hands?.hint(start) ?: "mãos desligadas"}" else experience.reason
+                val tracker=hands
+                val handError=tracker?.error
+                shell.handHealth=listOf(
+                    "${feed?.name ?: "Sem câmera"} ${if(frame?.tracking==true)"6DoF" else "3DoF"}\nYUV ${feed?.cpuImages?.delivered?.get() ?: 0}\n${if(frame?.active==true)"Imagem ativa" else "Imagem ausente"}",
+                    if(handError!=null)"ERRO MÃOS\n${handError.take(100)}" else "Modelo ${tracker?.modelCheck ?: "desligado"}\nInferências ${tracker?.completed?.get() ?: 0}",
+                    "Mãos ${tracker?.rawHands ?: 0} / ${tracker?.filteredHands ?: 0}\n${if(tracker?.enabled==false)"PAUSA TÉRMICA" else if(sample!=null)"Abra e faça pinça" else if(tracker?.completed?.get()==0L)tracker.stage else if(batch!=null&&batch.hands.isNotEmpty())"Resultado expirado" else "Sem detecção"}"
+                )
                 gpuMs=NativeBridge.gpuTime(handle)
                 advisedScale=if(prefs.getBoolean("neural",false))neural?.advise(stats.percentile(.5f),batch?.inferenceMs ?: 0f,thermal,battery/100f,q.renderScale) ?: q.renderScale else q.renderScale
                 if(appWindow!=null)shell.windows.windows.find{it.kind==WindowKind.ANDROID_APP}?.let{w->

@@ -2,6 +2,7 @@ package dev.trackmr.tracking
 
 import android.graphics.Bitmap
 import com.google.mediapipe.framework.image.BitmapImageBuilder
+import com.google.mediapipe.framework.image.BitmapExtractor
 import com.google.mediapipe.framework.image.ByteBufferExtractor
 import org.junit.Assert.*
 import org.junit.Test
@@ -44,6 +45,23 @@ class HandInputImageTest {
         assertThrows(IllegalArgumentException::class.java){input.withImage<Unit>{throw IllegalArgumentException("inference failed")}}
         input.prepare(3,4)
         input.withImage{assertEquals(3,it.width);assertEquals(4,it.height);assertEquals(48,ByteBufferExtractor.extract(it).capacity())}
+        input.close()
+    }
+    @Test fun bitmapCompatibilityAllocatesOwnedBitmapForEachFrame(){
+        val input=HandInputImage().apply{mode=HandInputImage.Mode.BITMAP}
+        var previous:Bitmap?=null
+        repeat(20){frame->
+            val pixels=input.prepare(2,2)
+            repeat(4){pixels.put(it,(0xff shl 24) or (0x33 shl 16) or (0x22 shl 8) or frame)}
+            input.withImage{image->
+                val bitmap=BitmapExtractor.extract(image)
+                assertNotSame(previous,bitmap)
+                assertFalse(bitmap.isRecycled)
+                assertEquals((0xff shl 24) or (frame shl 16) or (0x22 shl 8) or 0x33,bitmap.getPixel(0,0))
+                previous=bitmap
+            }
+            assertTrue(previous!!.isRecycled)
+        }
         input.close()
     }
 }

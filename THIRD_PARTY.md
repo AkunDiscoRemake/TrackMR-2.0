@@ -69,3 +69,9 @@ Antes de adotar qualquer candidato, fixe revisão, leia LICENSE/NOTICE daquela r
 ## Pesquisa atualizada
 
 Snapshot de 13 repositórios via GitHub API em 2026-09-26 e decisões de licença/Android/ARM64/manutenção/dependências: [docs/research/DECISIONS.md](docs/research/DECISIONS.md). Metadados de atividade não comprovam qualidade/latência/suporte ao telefone; candidatos não foram incluídos automaticamente. ORB-SLAM3/OpenVINS GPL-3.0 não foram incorporados.
+
+## Imagem de referência de mãos (alpha06)
+
+`app/src/main/assets/hand_self_test.jpg` e a cópia no teste Android são `test_image.jpg` não modificado do [MediaPipe Samples](https://github.com/google-ai-edge/mediapipe-samples), revisão `c2518ec444c3a3a99689e5d31eddadc240c83a0c`, diretório `examples/hand_landmarker/android/app/src/androidTest/assets`. Repositório Apache-2.0; proveniência e hash em `HAND_SELF_TEST.txt`. Usada exclusivamente para autoteste local do detector; não são mãos de câmera nem landmarks exibidos no shell. O grafo do teste é destruído antes do grafo de câmera.
+
+O módulo `tracking-validation` e AndroidX Test são ferramentas de validação, não dependências do launcher. O emulador Google APIs usa tradução ARM; seus tempos não são benchmark de um celular ARM real.

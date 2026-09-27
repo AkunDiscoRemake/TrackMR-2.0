@@ -22,6 +22,11 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
     @Volatile override var error: String?=null;private set
     override val available get()=kind!=BackendKind.NONE
     val status get()=if(!enabled)"Mãos pausadas pelo limite térmico" else error ?: "${kind.name} • ${latest.get()?.hands?.size ?: 0} mãos • ${completed.get()} frames"
+    @Volatile var modelCheck="aguardando";private set
+    private companion object {
+        // At most once per delegate/process. No reference landmarks or images are retained.
+        val checkedModes=java.util.concurrent.ConcurrentHashMap<Boolean,HandInputImage.Mode>()
+    }
     val completed=AtomicLong(0)
     val received=AtomicLong(0)
     val failedFrames=AtomicLong(0)
@@ -29,10 +34,12 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
     @Volatile var rawHands=0;private set
     @Volatile var filteredHands=0;private set
     @Volatile var inputDescription="sem imagem";private set
-    val diagnostic get()="Recebidas ${received.get()} • inferências ${completed.get()} • falhas ${failedFrames.get()}\nBrutas $rawHands • filtradas $filteredHands • $stage\n$inputDescription"
-    fun hint(now: Long): String = when {
+    val diagnostic get()="Modelo: $modelCheck • ${inputImage.mode}\nRecebidas ${received.get()} • inferências ${completed.get()} • falhas ${failedFrames.get()}\nBrutas $rawHands • filtradas $filteredHands • $stage\n$inputDescription"
+    fun hint(now: Long): String {
+        val failure=error
+        return when {
         !enabled->"Mãos pausadas: temperatura"
-        error!=null->error!!
+        failure!=null->failure
         !available->"Mãos: $stage"
         received.get()==0L->"Mãos: aguardando imagem CPU"
         completed.get()==0L->"Mãos: $stage"
@@ -40,6 +47,7 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
         rawHands==0->"Inferência OK • nenhuma mão detectada"
         filteredHands==0->"$rawHands detectadas • rejeitadas pelo filtro"
         else->"Mãos $filteredHands • inferências ${completed.get()}"
+        }
     }
     @Volatile var intervalMs=33L
     @Volatile var inputWidth=384
@@ -63,18 +71,46 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
     private var lastModelTimestamp=0L
     private var failures=0
     init { worker.execute{initialize(preferGpu)} }
+    private fun createModel(gpu: Boolean)=HandLandmarker.createFromOptions(context,HandLandmarker.HandLandmarkerOptions.builder()
+        .setBaseOptions(BaseOptions.builder().setModelAssetPath("hand_landmarker.task").setDelegate(if(gpu)Delegate.GPU else Delegate.CPU).build())
+        .setNumHands(2).setRunningMode(RunningMode.VIDEO).setMinHandDetectionConfidence(.5f)
+        .setMinHandPresenceConfidence(.5f).setMinTrackingConfidence(.5f).build())
     private fun initialize(gpu: Boolean){
+        kind=BackendKind.NONE
         try{
             landmarker?.close();landmarker=null
             modelBytes=context.assets.openFd("hand_landmarker.task").use{it.length}
             check(modelBytes in 1_000_001..19_999_999){"Hand Landmarker ausente/inválido no APK"}
-            val delegate=if(gpu)Delegate.GPU else Delegate.CPU
-            landmarker=HandLandmarker.createFromOptions(context,HandLandmarker.HandLandmarkerOptions.builder()
-                .setBaseOptions(BaseOptions.builder().setModelAssetPath("hand_landmarker.task").setDelegate(delegate).build())
-                .setNumHands(2).setRunningMode(RunningMode.VIDEO).setMinHandDetectionConfidence(.5f)
-                .setMinHandPresenceConfidence(.5f).setMinTrackingConfidence(.5f).build())
+            var checked=checkedModes[gpu]
+            if(checked==null){
+                stage="autoteste local do modelo";modelCheck="testando"
+                landmarker=createModel(gpu)
+                try{
+                    HandModelCheck.verify(context,landmarker!!,HandInputImage.Mode.RGBA)
+                    checked=HandInputImage.Mode.RGBA
+                }catch(e: Exception){
+                    android.util.Log.w("TrackMR-hands","RGBA self-test failed; testing official Bitmap path",e)
+                    landmarker?.close();landmarker=createModel(gpu)
+                    HandModelCheck.verify(context,landmarker!!,HandInputImage.Mode.BITMAP)
+                    checked=HandInputImage.Mode.BITMAP
+                }
+                // Crucial: destroy reference tracking state before any live camera frame.
+                landmarker?.close();landmarker=null
+                checkedModes[gpu]=checked!!
+            }
+            inputImage.mode=checked!!;modelCheck="OK ${checked.name}"
+            landmarker=createModel(gpu)
             kind=if(gpu)BackendKind.MEDIAPIPE_GPU else BackendKind.MEDIAPIPE_CPU;error=null;failures=0;stage="aguardando imagem"
-        }catch(e: Exception){android.util.Log.e("TrackMR-hands","Backend initialization failed",e);if(gpu)initialize(false) else {kind=BackendKind.NONE;error="MediaPipe indisponível: ${e.javaClass.simpleName}: ${e.message}"}}
+            android.util.Log.i("TrackMR-hands","Native model check $modelCheck; live camera counters start at zero")
+        }catch(e: Exception){initializationFailed(e,gpu)}
+        catch(e: LinkageError){initializationFailed(e,false)} // JNI/ABI mismatch is not an Exception.
+    }
+    private fun initializationFailed(e: Throwable,gpu: Boolean){
+        android.util.Log.e("TrackMR-hands","Backend initialization failed",e)
+        if(gpu)initialize(false)else{
+            kind=BackendKind.NONE;modelCheck="FALHOU";stage="erro de inicialização"
+            error="MediaPipe: ${e.javaClass.simpleName}: ${e.message}"
+        }
     }
     @Synchronized override fun reserve(nowNs: Long): Boolean {
         if(closed.get()||!enabled||!available||nowNs-lastSubmitted<intervalMs*1_000_000||!busy.compareAndSet(false,true)){dropped.incrementAndGet();return false}

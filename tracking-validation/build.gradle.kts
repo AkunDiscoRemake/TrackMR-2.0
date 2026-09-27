@@ -16,7 +16,7 @@ android {
 // Compile the EXACT production tracker, not a mock or copy. No launcher, renderer or camera HAL test.
 kotlin.sourceSets["main"].kotlin.apply {
     srcDir("../app/src/main/java")
-    include("dev/trackmr/tracking/HandTracker.kt", "dev/trackmr/tracking/HandInputImage.kt",
+    include("dev/trackmr/tracking/HandTracker.kt", "dev/trackmr/tracking/HandModelCheck.kt", "dev/trackmr/tracking/HandInputImage.kt",
         "dev/trackmr/camera/CameraFeed.kt", "dev/trackmr/camera/CameraPipelineState.kt")
 }
 dependencies {

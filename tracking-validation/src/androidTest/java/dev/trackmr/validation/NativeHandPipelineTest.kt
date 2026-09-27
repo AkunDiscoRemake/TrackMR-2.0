@@ -40,6 +40,9 @@ class NativeHandPipelineTest {
             try{
                 await({"Init: ${tracker.error}"}){tracker.available||tracker.error!=null}
                 assertTrue("Init failed: ${tracker.error}",tracker.available)
+                assertTrue(tracker.modelCheck.startsWith("OK"))
+                assertNull("Reference hand must NEVER reach the shell",tracker.latest.get())
+                assertEquals(0L,tracker.completed.get())
                 tracker.intervalMs=0;tracker.inputWidth=384
                 repeat(6){frame->
                     val target=writer.dequeueInputImage()

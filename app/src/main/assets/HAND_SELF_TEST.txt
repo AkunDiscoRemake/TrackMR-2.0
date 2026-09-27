@@ -1,0 +1,6 @@
+Local startup diagnostic only. Not a camera frame; never displayed as detected hands.
+Unmodified Google MediaPipe samples test_image.jpg, Apache-2.0 repository.
+Source revision: c2518ec444c3a3a99689e5d31eddadc240c83a0c
+https://github.com/google-ai-edge/mediapipe-samples/blob/c2518ec444c3a3a99689e5d31eddadc240c83a0c/examples/hand_landmarker/android/app/src/androidTest/assets/test_image.jpg
+SHA256: 7584b748aa0c57a8cce3acd9e40149f5d4d7317f7db47c8a5a5f4a8fba9090ec
+Model state is closed and recreated after self-test. No self-test landmarks are published.
