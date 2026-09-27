@@ -1,16 +1,18 @@
-# TRACKMR2.0 · MR-first alpha06
+# TRACKMR2.0 · MR-first alpha07
 
 **Shell espacial Android para celular com lentes Cardboard. Abre diretamente no renderer XR e solicita MR real, sem launcher/menu 2D intermediário.** Não é um sistema pronto equivalente a um headset dedicado.
 
 O projeto preserva o SDK Cardboard, panoramas e ícone do repositório. Não usa recursos proprietários do Quest. Autorizações de câmera/captura, seletor de arquivo, leitor QR e instalação/configurações continuam sendo telas do Android: retire o visor para operá-las com segurança.
 
-## Câmera e mãos na alpha06
+## Mãos na alpha07 — correção ainda sem confirmação no aparelho
 
-**[Baixar alpha06](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36284687600/artifacts/10920341568)** · **[Build + inferência Android aprovados](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36284687600)** · [Correções, evidência e limites](docs/ALPHA06-HANDS.md).
+**[Baixar alpha07](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36286888783/artifacts/10920654003)** · **[Build + JNI/GLES aprovados](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36286888783)** · [Defeito, testes, evidência e limites](docs/ALPHA07-HANDS.md).
 
-Após o relato de câmera invertida e mãos sem funcionar na alpha05: separação das transformações OES/YUV, entrada Bitmap com ownership correto, autoteste nativo no aparelho e diagnóstico espacial legível. Primeira abertura desta revisão restaura **mãos/esqueleto ligados, Camera2 + CPU, sem ARCore**; 6DoF continua opcional em Tracking.
+**O usuário reportou que a alpha06 ainda não rastreava as mãos.** Corrigido o descarte prematuro de resultados entre inferências, que escondia o esqueleto e cancelava/rearmava a pinça. A validade agora separa aquisição e conclusão, com limites para não interagir usando resultados atrasados. Mão verde: interativa; âmbar: visual apenas. Diagnósticos agora ficam relativos à viewport de cada olho Cardboard, mostrando dispositivo, YUV, inferências/tempo e detecção.
 
-O tracker de produção passou em teste Android com MediaPipe ARM64 real via tradução: **24 frames YUV com mãos nas quatro rotações + 4 frames pretos sem mãos**. Isso é mais que compilação/teste de buffer, mas **não substitui teste da câmera e interação no celular do usuário**. Não houve benchmark físico.
+CI aprovado: regressões de continuidade de pinça com tempos simulados, tracker MediaPipe ARM64 real em 24 quadros YUV positivos + 4 pretos, quatro rotações e **leitura real de pixels GLES** da rotina de esqueleto usada no app. O emulador levou cerca de 2 s por processamento e seus resultados permaneceram corretamente EXPIRED; o teste GLES verifica a geometria separadamente. **Isso não comprova interação em tempo real, câmera física ou funcionamento no celular do usuário.** Não houve benchmark físico.
+
+[Alpha06: histórico de orientação Camera2, entrada Bitmap e autoteste](docs/ALPHA06-HANDS.md). A migração daquela revisão continua habilitando mãos/esqueleto e Camera2 + CPU para instalações antigas; preferências posteriores são preservadas, ARCore/6DoF continua opcional.
 
 Hand Landmarker oficial embutido (7.819.105 bytes), hash fixado e comparação com o asset dentro do APK. Aponte com a mão, faça pinça e segure para arrastar. **Toque físico na tela não seleciona o shell XR.** Não é necessária importação do modelo. [Gestos e input contínuo introduzidos na alpha04](docs/ALPHA04-HANDS.md).
 
@@ -44,8 +46,8 @@ Entrega anterior alpha02 (histórico): [APKs e proveniência](docs/DELIVERY-alph
 
 No GitHub: **Actions → Android • TrackMR 2.0 → execução verde → TrackMR-2.0-debug-arm64**.
 
-- `TrackMR-2.0-alpha06-arm64.apk` — shell MR/VR/Cardboard e cliente OpenXR opcional;
-- `TrackMR-Runtime-Companion-alpha06-arm64.apk` — diagnóstico/Broker e acesso ao cliente;
+- `TrackMR-2.0-alpha07-arm64.apk` — shell MR/VR/Cardboard e cliente OpenXR opcional;
+- `TrackMR-Runtime-Companion-alpha07-arm64.apk` — diagnóstico/Broker e acesso ao cliente;
 - `TrackMR-Dev-API-v1.jar`, `SHA256SUMS.txt`, `SOURCE_REVISION.txt`.
 
 APKs **debug**, não release assinada para loja. Artefatos expiram em 14 dias. O workflow também publica relatórios JVM/lint, compila shaders ESSL e executa testes nativos. Consulte a execução da revisão desejada; a existência do YAML não prova aprovação.

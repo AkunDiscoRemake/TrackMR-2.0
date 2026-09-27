@@ -24,7 +24,7 @@
 | EGL | Home, bloqueio, rotação, pressão de memória | Recupera render; captura perdida é encerrada com segurança |
 | Jogos | Mãos, Volume+, botão A; erro na sequência | Pontos respondem e Menu retorna |
 | ARCore | Instalação, recusa de câmera, sem suporte, pouca luz | Fallback 3DoF e estado claro, sem crash |
-| Mãos | CPU/GPU, oclusão, mão esquerda/direita, timestamps | Sem fila, expiração limitada a 150–350 ms conforme processamento; nenhum gesto após perda |
+| Mãos | CPU/GPU, oclusão, mão esquerda/direita, timestamps | Sem fila, retenção limitada após conclusão e limite separado para idade de aquisição; nenhum gesto após perda (alpha07) |
 | Captura | Recusa, um app, tela inteira, resize, sistema encerra | Notificação, stop, correto aspect; sem reutilizar consentimento |
 | Proteção | FLAG_SECURE/DRM | Continua protegido; nunca tentar contornar |
 | Shizuku | Ausente, negado, autorizado, morte do binder | Erro útil, sem promoção silenciosa ou comandos no display 0 |
@@ -75,3 +75,7 @@ Falta executar a matriz física da [alpha03](ALPHA03.md), inclusive tocar cada c
 `d008b6c` / [Actions 36284687600](https://github.com/AkunDiscoRemake/TrackMR-2.0/actions/runs/36284687600): jobs de APK/JVM/lint e inferência nativa aprovados. `:tracking-validation:connectedDebugAndroidTest` compila as fontes do tracker do app; recebe imagens reais ImageReader/ImageWriter, converte YUV e executa MediaPipe ARM64 via tradução do emulador API35. Teste: 24 frames de referência positivos, 4 pretos negativos; 0 falhas/erros/ignorados. Autoteste não publica `latest` nem incrementa contadores de câmera. Contrato OES/YUV verificado nas 16 combinações sensor/display; Robolectric verifica ownership e cores dos Bitmaps por frame.
 
 Falhas anteriores no emulador API29/API30 e limite desta evidência estão [registrados na entrega](ALPHA06-HANDS.md). Tempo de emulador não mede performance do celular. Falta validar câmera física, esqueleto alinhado no passthrough, pinch/drag e ARCore no aparelho do usuário.
+
+## Alpha07
+
+[Notas e evidência](ALPHA07-HANDS.md): novos testes de entrega/pinça contínua a 100/150/200/280 ms, FPS Camera2, estado de validade após JNI e pixels GLES reais do helper de esqueleto compartilhado. A validação não executa toda a Activity/Cardboard nem o telefone do usuário; manter matriz física pendente. Não usar sucesso de inferência, screenshot do pbuffer ou teste sintético como prova de interação física.

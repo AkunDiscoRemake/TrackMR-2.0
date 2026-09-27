@@ -1,4 +1,4 @@
-# Desempenho e medições · alpha06
+# Desempenho e medições · alpha07
 
 **Sem benchmark em aparelho nesta entrega.** Metas de latência/FPS/potência não são resultados. Shader/teste/build verde não mede uso real de GPU, bateria ou conforto.
 
@@ -9,7 +9,7 @@
 - MediaPipe VIDEO, até duas mãos, CPU padrão/GPU opcional com fallback CPU; inicialização/inferência/close no mesmo worker. Uma reserva em voo, sem fila crescente.
 - YUV downsample com offsets reutilizados; alpha06 usa Bitmap novo por inferência no caminho documentado Android, mais array ARGB reutilizado; largura/cadência adaptadas (192–512), não aumentar resolução como substituto de filtro/calibração.
 - Associação de pulsos e handedness como desempate; handedness não é probabilidade de cada joint. One Euro/Kalman/EMA/RAW no domínio, guard de median/outlier e reset temporal. Não empilhar filtros pesados por padrão.
-- Expiração acompanha processamento, entre 150 e 350 ms; limite absoluto evita manter indefinidamente um resultado velho. Essa tolerância não é redução da latência. Previsão do ponteiro limitada a 18 ms, nunca usada para decidir gestos.
+- Alpha07 separa conclusão de aquisição: retenção de 120–350 ms após concluir; interação exige processamento ≤300 ms e aquisição ≤650 ms. Lentidão pode mostrar mão âmbar sem input; aquisição >1.500 ms ou prazo de conclusão vencido expira tudo. Essa retenção não reduz latência; veja [política e testes](ALPHA07-HANDS.md). Previsão do ponteiro limitada a 18 ms, nunca usada para decidir gestos.
 - Dock/janelas instanciados em lote; atlas limitado, upload de tiles só quando mudam. Não há promessa de zero alocações: layout, snapshots, filtros e AR queries ainda geram trabalho/alocações.
 - Depth opt-in; aquisição/upload limitado em cadência, buffer reaproveitado quando dimensões não mudam. Sem depth em aparelhos sem suporte.
 - GPU elapsed: quatro queries EXT, resultado só se disponível, sem espera bloqueante. Unsupported/disjoint = **N/D**, nunca zero inventado; queries afetadas por disjoint são invalidadas.
