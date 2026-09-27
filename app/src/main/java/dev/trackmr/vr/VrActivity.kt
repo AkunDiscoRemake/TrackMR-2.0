@@ -271,7 +271,9 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
             else if(feed!=null&&start-cameraStarted>5_000_000_000)experience.camera(CameraState.ERROR,feed!!.status)
             val batch=hands?.latest?.get()
             val sampleNow=SystemClock.elapsedRealtimeNanos() // read AFTER snapshot, not before camera update
-            val sample=batch?.let{primaryHand.choose(it.hands)}?.takeIf{SampleFreshness.usable(sampleNow-it.timestampNs,batch.preprocessMs+batch.inferenceMs+batch.filterMs)}
+            val presentation=batch?.let{hands?.presentation(it,sampleNow)} ?: HandPresentation.NONE
+            val visibleSample=batch?.let{primaryHand.choose(it.hands)}?.takeIf{presentation==HandPresentation.LIVE||presentation==HandPresentation.SLOW}
+            val sample=visibleSample?.takeIf{presentation==HandPresentation.LIVE}
             var px=.5f;var py=.5f
             if(sample!=null){
                 val p=sample.points
@@ -283,11 +285,11 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
             val fillMr=prefs.getBoolean("fillMr",true)
             NativeBridge.viewOptions(handle,fillMr)
             // Explicit camera overlay, not a metric hand or opaque fake hand mesh.
-            val overlay=if(sample!=null&&prefs.getBoolean("handOverlay",true)){
+            val overlay=if(visibleSample!=null&&prefs.getBoolean("handOverlay",true)){
                 val list=batch!!.hands;val target=if(list.size==1)overlayOne else overlayTwo
                 list.forEachIndexed{i,hand->hand.points.copyInto(target,i*63)};target
             }else null
-            NativeBridge.hands(handle,overlay)
+            NativeBridge.hands(handle,overlay,presentation==HandPresentation.LIVE)
             if(capturing&&shell.surfaceKind!=null&&shell.windows.windows.none{it.kind==shell.surfaceKind&&!it.minimized}){
                 capturing=false;shell.surfaceKind=null;runOnUiThread{stopContent()}
             }
@@ -312,9 +314,9 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
                 val tracker=hands
                 val handError=tracker?.error
                 shell.handHealth=listOf(
-                    "${feed?.name ?: "Sem câmera"} ${if(frame?.tracking==true)"6DoF" else "3DoF"}\nYUV ${feed?.cpuImages?.delivered?.get() ?: 0}\n${if(frame?.active==true)"Imagem ativa" else "Imagem ausente"}",
-                    if(handError!=null)"ERRO MÃOS\n${handError.take(100)}" else "Modelo ${tracker?.modelCheck ?: "desligado"}\nInferências ${tracker?.completed?.get() ?: 0}",
-                    "Mãos ${tracker?.rawHands ?: 0} / ${tracker?.filteredHands ?: 0}\n${if(tracker?.enabled==false)"PAUSA TÉRMICA" else if(sample!=null)"Abra e faça pinça" else if(tracker?.completed?.get()==0L)tracker.stage else if(batch!=null&&batch.hands.isNotEmpty())"Resultado expirado" else "Sem detecção"}"
+                    "${Build.MODEL} • Android ${Build.VERSION.RELEASE}\n${feed?.name ?: "Sem câmera"} YUV ${feed?.cpuImages?.delivered?.get() ?: 0}\n${if(frame?.active==true)"Imagem ativa" else "Imagem ausente"}",
+                    if(handError!=null)"ERRO MÃOS\n${handError.take(100)}" else "${tracker?.kind ?: "OFF"}\nInfer ${tracker?.completed?.get() ?: 0} • ${batch?.let{(it.preprocessMs+it.inferenceMs+it.filterMs).toInt()} ?: 0} ms\nModelo ${tracker?.modelCheck ?: "desligado"}",
+                    "Mãos ${tracker?.rawHands ?: 0} / ${tracker?.filteredHands ?: 0}\n${if(tracker?.enabled==false)"PAUSA TÉRMICA" else if(presentation==HandPresentation.SLOW)"LENTO: só visual" else if(sample!=null)"Desenho + pinça ON" else if(tracker?.completed?.get()==0L)tracker.stage else if(batch!=null&&batch.hands.isNotEmpty())"Resultado expirado" else "Sem detecção"}"
                 )
                 gpuMs=NativeBridge.gpuTime(handle)
                 advisedScale=if(prefs.getBoolean("neural",false))neural?.advise(stats.percentile(.5f),batch?.inferenceMs ?: 0f,thermal,battery/100f,q.renderScale) ?: q.renderScale else q.renderScale
@@ -324,6 +326,7 @@ class VrActivity : ComponentActivity(),GLSurfaceView.Renderer {
                 }
                 refreshPages()
             }
+            shell.viewportAspect=width/2f/height.coerceAtLeast(1)
             shell.hovered=hover;shell.build(dt,start)
             NativeBridge.spatial(handle,shell.packet,shell.count,px,py,sample!=null)
             NativeBridge.camera(handle,textures[3],when(experience.active){Experience.MR->1;Experience.VR->2;else->0},frame?.projection,frame?.textureTransform)

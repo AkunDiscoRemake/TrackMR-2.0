@@ -9,6 +9,7 @@ import android.media.ImageWriter
 import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.trackmr.handtracking.HandPresentation
 import dev.trackmr.handtracking.CameraOrientation
 import dev.trackmr.tracking.HandTracker
 import java.util.concurrent.CountDownLatch
@@ -77,6 +78,9 @@ class NativeHandPipelineTest {
                         assertNotNull("Filter removed real hand",hand)
                         assertEquals(63,hand!!.points.size)
                         assertTrue(hand.points.all{it.isFinite()})
+                        val batch=tracker.latest.get()!!
+                        val state=tracker.presentation(batch,batch.completedNs+16_000_000)
+                        assertTrue("New result hidden by renderer gate: $state / ${tracker.diagnostic}",state==HandPresentation.LIVE||state==HandPresentation.SLOW)
                     }
                 }
                 android.util.Log.i("TrackMR-hands","PASS rotation=$rotation: 6 YUV frames detected real landmarks; black frame=0; ${tracker.modelCheck}")

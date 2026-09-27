@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 class HandTracker(private val context: Context,private val preferGpu: Boolean=false) : CameraConsumer, HandBackend {
     data class Batch(val hands: List<HandSample>,val events: List<GestureEvent>,val timestampNs: Long,
-        val receivedNs: Long,val sensorTimestampNs: Long,val preprocessMs: Float,val inferenceMs: Float,val filterMs: Float,val clockKnown: Boolean)
+        val receivedNs: Long,val sensorTimestampNs: Long,val preprocessMs: Float,val inferenceMs: Float,val filterMs: Float,val clockKnown: Boolean,val completedNs: Long)
     val latest=AtomicReference<Batch?>(null)
     @Volatile override var kind=BackendKind.NONE;private set
     @Volatile override var error: String?=null;private set
@@ -43,12 +43,14 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
         !available->"Mãos: $stage"
         received.get()==0L->"Mãos: aguardando imagem CPU"
         completed.get()==0L->"Mãos: $stage"
-        latest.get()?.let{!SampleFreshness.usable(now-it.timestampNs,it.preprocessMs+it.inferenceMs+it.filterMs)}!=false->"Mãos: resultado expirado • $stage"
+        latest.get()?.let{presentation(it,now)==HandPresentation.EXPIRED}!=false->"Mãos: resultado expirado • $stage"
         rawHands==0->"Inferência OK • nenhuma mão detectada"
         filteredHands==0->"$rawHands detectadas • rejeitadas pelo filtro"
         else->"Mãos $filteredHands • inferências ${completed.get()}"
         }
     }
+    fun presentation(batch: Batch,now: Long)=HandDelivery.state(now,batch.timestampNs,batch.completedNs,
+        batch.preprocessMs+batch.inferenceMs+batch.filterMs,intervalMs,batch.hands.isNotEmpty(),enabled)
     @Volatile var intervalMs=33L
     @Volatile var inputWidth=384
     @Volatile var enabled=true
@@ -158,7 +160,8 @@ class HandTracker(private val context: Context,private val preferGpu: Boolean=fa
                     temporal[slot].update(o)?.let{s->filtered+=s;events+=gestures[slot].update(s)}
                 }}
                 events+=twoHands.update(filtered.getOrNull(0),filtered.getOrNull(1))
-                latest.set(Batch(filtered,events,capture,received,sensorTimestamp,preMs,inferMs,(SystemClock.elapsedRealtimeNanos()-filterStart)/1e6f,clockKnown))
+                val finished=SystemClock.elapsedRealtimeNanos()
+                latest.set(Batch(filtered,events,capture,received,sensorTimestamp,preMs,inferMs,(finished-filterStart)/1e6f,clockKnown,finished))
                 filteredHands=filtered.size;stage="aguardando imagem"
                 failures=0;error=null;completed.incrementAndGet()
             }catch(e: Exception){failedFrames.incrementAndGet();latest.set(null);error="Tracking: ${e.javaClass.simpleName}: ${e.message}";android.util.Log.e("TrackMR-hands",error,e);if(++failures>=3&&kind==BackendKind.MEDIAPIPE_GPU)initialize(false)}

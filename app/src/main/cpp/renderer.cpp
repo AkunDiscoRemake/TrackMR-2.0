@@ -78,12 +78,13 @@ void main(){
 )";
 const char* lineVertex=R"(#version 300 es
 layout(location=0) in vec2 position;
-void main(){gl_Position=vec4(position,0,1);}
+void main(){gl_Position=vec4(position,0,1);gl_PointSize=6.;}
 )";
 const char* lineFragment=R"(#version 300 es
 precision mediump float;
 out vec4 color;
-void main(){color=vec4(.45,1.,.9,1.);}
+uniform vec3 lineColor;
+void main(){color=vec4(lineColor,1.);}
 )";
 GLuint shader(GLenum type,const char* code){
  GLuint s=glCreateShader(type);glShaderSource(s,1,&code,nullptr);glCompileShader(s);
@@ -114,7 +115,7 @@ struct Renderer {
  CardboardEyeTextureDescription descriptions[2]{};
  std::array<float,24> balls{};
  std::array<float,168> handLines{};
- int handVertices=0;
+ int handVertices=0;bool handInteractive=false;
  Renderer(JNIEnv* env,jobject activity){
    std::call_once(sdkInitialization,[activity]{ Cardboard_initializeAndroid(vm,activity); });
    tracker=CardboardHeadTracker_create();
@@ -239,7 +240,9 @@ struct Renderer {
            float w=eyeProjection.m[3]*ray.x+eyeProjection.m[7]*ray.y+eyeProjection.m[11]*ray.z;
            if(std::abs(w)>.00001f){auto clip=eyeProjection.direction(ray);mapped[n*2]=clip.x/w;mapped[n*2+1]=clip.y/w;}}
        }
-       glBufferSubData(GL_ARRAY_BUFFER,0,handVertices*2*sizeof(float),mapped.data());glLineWidth(2);glDrawArrays(GL_LINES,0,handVertices);}
+       glUniform3f(glGetUniformLocation(lineProg,"lineColor"),handInteractive?.25f:1.f,handInteractive?1.f:.65f,handInteractive?.85f:.1f);
+       glBufferSubData(GL_ARRAY_BUFFER,0,handVertices*2*sizeof(float),mapped.data());glLineWidth(2);glDrawArrays(GL_LINES,0,handVertices);
+       glDrawArrays(GL_POINTS,0,handVertices);}
      // Gaze reticle, one physical pixel wide. No texture or extra material allocation.
      Vec3 cursor=origin+dir*1.5f;
      float cx=vp.m[0]*cursor.x+vp.m[4]*cursor.y+vp.m[8]*cursor.z+vp.m[12];
@@ -248,6 +251,7 @@ struct Renderer {
      if(std::abs(cw)>.001f){cx/=cw;cy/=cw;}else{cx=cy=0;}
      float cross[]={cx-.008f,cy,cx+.008f,cy,cx,cy-.008f,cx,cy+.008f};
      glUseProgram(lineProg);glBindVertexArray(lineVao);glBindBuffer(GL_ARRAY_BUFFER,lineBuffer);
+     glUniform3f(glGetUniformLocation(lineProg,"lineColor"),.45f,1.f,.9f);
      glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(cross),cross);glDrawArrays(GL_LINES,0,4);
    }
    CardboardDistortionRenderer_renderEyeToDisplay(distortion,0,0,0,width,height,&descriptions[0],&descriptions[1]);
@@ -270,8 +274,8 @@ JNI(recenter) void JNICALL Java_dev_trackmr_vr_NativeBridge_recenter(JNIEnv*,job
 JNI(settings) void JNICALL Java_dev_trackmr_vr_NativeBridge_settings(JNIEnv*,jobject,jlong p,jfloat scale,jboolean curve,jfloat aspect){auto r=ptr(p);if(std::abs(r->scale-scale)>.01f){r->scale=std::clamp(scale,.6f,1.f);r->dirty=true;}r->curved=curve;r->aspect=std::clamp(aspect,.3f,5.f);}
 JNI(scene) void JNICALL Java_dev_trackmr_vr_NativeBridge_scene(JNIEnv*,jobject,jlong p,jint scene){ptr(p)->scene=std::clamp(scene,0,3);ptr(p)->score=0;}
 JNI(select) jint JNICALL Java_dev_trackmr_vr_NativeBridge_select(JNIEnv*,jobject,jlong p){auto r=ptr(p);if(r->scene&&r->hover>=0&&r->hover<6){if(r->scene!=3||r->hover==r->score%6)r->score++;else r->score=0;}return r->score;}
-JNI(hands) void JNICALL Java_dev_trackmr_vr_NativeBridge_hands(JNIEnv* e,jobject,jlong p,jfloatArray points){
- auto r=ptr(p);r->handVertices=0;if(!points)return;int count=e->GetArrayLength(points);if(count!=63&&count!=126)return;
+JNI(hands) void JNICALL Java_dev_trackmr_vr_NativeBridge_hands(JNIEnv* e,jobject,jlong p,jfloatArray points,jboolean interactive){
+ auto r=ptr(p);r->handInteractive=interactive;r->handVertices=0;if(!points)return;int count=e->GetArrayLength(points);if(count!=63&&count!=126)return;
  float data[126];e->GetFloatArrayRegion(points,0,count,data);
  const int edges[][2]={{0,1},{1,2},{2,3},{3,4},{0,5},{5,6},{6,7},{7,8},{5,9},{9,10},{10,11},{11,12},{9,13},{13,14},{14,15},{15,16},{13,17},{0,17},{17,18},{18,19},{19,20}};
  for(int h=0;h<count/63;h++)for(auto& edge:edges)for(int index:edge){int n=r->handVertices++*2;r->handLines[n]=data[h*63+index*3]*2-1;r->handLines[n+1]=1-data[h*63+index*3+1]*2;}

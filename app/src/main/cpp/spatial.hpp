@@ -32,7 +32,7 @@ void main(){
  float radius=selectionIdRadius.w;
  float z=0.;if(tintKind.a>2.5&&radius>0.){float angle=p.x/radius;z=radius*(1.-cos(angle));p.x=radius*sin(angle);}
  vec3 w=centerWidth.xyz+vec3(cos(yaw)*p.x+sin(yaw)*z,p.y,-sin(yaw)*p.x+cos(yaw)*z);
- gl_Position=vp*vec4(w,1);
+ gl_Position=selectionIdRadius.y>.5?vec4(w.xy,0,1):vp*vec4(w,1);
  uv=mix(uvRect.xy+vec2(.5/2048.),uvRect.zw-vec2(.5/2048.),vec2(q.x,1.-q.y));
  tint=tintKind;style=vec4(heightYawOpacityHover.zw,selectionIdRadius.x,selectionIdRadius.w);
 })";
@@ -66,7 +66,7 @@ void main(){
  int hit(mr::Vec3 origin,mr::Vec3 direction) {
   float nearest=100;int selected=-1;
   for(int i=0;i<count;i++){
-   const auto* d=data.data()+i*stride;if(d[6]<.1f||(d[18]<=0&&d[15]==1))continue;
+   const auto* d=data.data()+i*stride;if(d[17]>.5f)continue;if(d[6]<.1f||(d[18]<=0&&d[15]==1))continue;
    const float cy=std::cos(d[5]),sy=std::sin(d[5]);
    mr::Vec3 relative=origin-mr::Vec3{d[0],d[1],d[2]};
    mr::Vec3 o{relative.x*cy-relative.z*sy,relative.y,relative.x*sy+relative.z*cy};
