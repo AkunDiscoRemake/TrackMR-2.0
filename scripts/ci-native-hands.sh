@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -uo pipefail
 mkdir -p .cache
+abis=$(adb shell getprop ro.product.cpu.abilist)
+echo "::notice title=Android test ABI::$abis; native bridge=$(adb shell getprop ro.dalvik.vm.native.bridge)"
+if [[ "$abis" != *arm64-v8a* ]]; then echo '::error::Emulator has no ARM64 translation'; exit 1; fi
 ./gradlew --no-daemon :tracking-validation:connectedDebugAndroidTest 2>&1 | tee .cache/native-hand-test.log
 result=${PIPESTATUS[0]}
 adb logcat -d 'TrackMR-hands:V' 'AndroidRuntime:E' '*:S' > .cache/native-hand-logcat.txt || true

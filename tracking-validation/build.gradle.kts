@@ -5,6 +5,7 @@ android {
     defaultConfig {
         applicationId="dev.trackmr.validation"
         minSdk=29;targetSdk=35
+        ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner="androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility=JavaVersion.VERSION_17;targetCompatibility=JavaVersion.VERSION_17 }
