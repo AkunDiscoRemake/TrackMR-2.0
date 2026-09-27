@@ -22,8 +22,9 @@ import org.junit.runner.RunWith
 class NativeHandPipelineTest {
     private fun await(message: ()->String,condition: ()->Boolean){
         val end=SystemClock.elapsedRealtime()+30_000
-        while(!condition()&&SystemClock.elapsedRealtime()<end)Thread.sleep(10)
-        assertTrue(message(),condition())
+        var done=condition()
+        while(!done&&SystemClock.elapsedRealtime()<end){Thread.sleep(10);done=condition()}
+        assertTrue(message(),done) // reservations are side effects; NEVER evaluate a second time.
     }
     @Test fun referenceHandSurvivesRealYuvAndRepeatedNativeInference(){
         val instrumentation=InstrumentationRegistry.getInstrumentation()
