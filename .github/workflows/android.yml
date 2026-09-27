@@ -83,6 +83,8 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - run: ./scripts/bootstrap.sh
       - name: Enable emulator acceleration
         run: |
@@ -97,7 +99,7 @@ jobs:
           target: default
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: ./gradlew --no-daemon :tracking-validation:connectedDebugAndroidTest
+          script: ./scripts/ci-native-hands.sh
       - name: Native inference results
         if: always()
         run: |
@@ -117,3 +119,5 @@ jobs:
           path: |
             tracking-validation/build/reports/
             tracking-validation/build/outputs/androidTest-results/
+            .cache/native-hand-test.log
+            .cache/native-hand-logcat.txt
